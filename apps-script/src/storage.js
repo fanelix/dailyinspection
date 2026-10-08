@@ -286,6 +286,77 @@ function parseUpload_(p) {
   return v;
 }
 
+// ---- Diagnostik (dijalankan manual dari editor; tidak ada di allowlist doPost) ----
+
+// Menguji Drive + Sheets sungguhan lewat kode storage yang sama dengan jalur produksi, tanpa Vercel dan tanpa HMAC.
+// Meninggalkan 1 baris Inspections dan 1 baris Photos (perangkat uji sekali pakai) serta 1 file yang dibuang ke
+// tempat sampah. Pakai hanya di staging. Hasil tiap langkah ada di Execution log.
+function adminSelfTest() {
+  const deviceId = Utilities.getUuid();
+  const inspectionId = Utilities.getUuid();
+  const photoId = Utilities.getUuid();
+  const observedAt = new Date().toISOString();
+  const note = '=uji teks, bukan rumus';
+  const bytes = [-1, -40, -1, -32, 0, 16, 74, 70, 73, 70, 0, 1, 1, 0, 0, 1, 0, 1, 0, 0, -1, -39]; // kerangka JFIF, bukan gambar yang bisa dibuka
+  const sha256 = sha256Hex_(bytes);
+  const upload = { inspectionId: inspectionId, photoId: photoId, mime: 'image/jpeg', sha256: sha256, bytesBase64: Utilities.base64Encode(bytes) };
+
+  function step(label, fn) {
+    try {
+      const result = fn();
+      console.log('LULUS  ' + label);
+      return result;
+    } catch (err) {
+      console.error('GAGAL  ' + label + ': ' + String(err && err.message));
+      throw err;
+    }
+  }
+  function expect(cond, message) {
+    if (!cond) throw new Error(message);
+  }
+
+  const prepared = step('prepareInspection: baris dibuat dan ID file Drive dicadangkan (generateIds)', function () {
+    return prepareInspection(deviceId, { inspectionId: inspectionId, inspectorName: 'Self-test', note: note, observedAt: observedAt, photoIds: [photoId] });
+  });
+  expect(prepared.photos[0].status === 'reserved', 'status foto seharusnya reserved');
+
+  const first = step('uploadPhoto: file dibuat di Drive dengan ID cadangan', function () {
+    return uploadPhoto(deviceId, upload);
+  });
+  expect(first.status === 'stored' && first.replayed === false, 'upload pertama seharusnya stored dan bukan replay');
+
+  const second = step('uploadPhoto diulang: replay, tidak ada file kedua', function () {
+    return uploadPhoto(deviceId, upload);
+  });
+  expect(second.status === 'stored' && second.replayed === true, 'upload kedua seharusnya replay');
+
+  step('getPhoto: byte dibaca kembali dari Drive dan checksum cocok', function () {
+    const read = getPhoto(deviceId, { inspectionId: inspectionId, photoId: photoId });
+    expect(read.sha256 === sha256 && read.bytesBase64 === upload.bytesBase64, 'byte yang dibaca berbeda dari yang diunggah');
+  });
+
+  step('Sheets: tanggal tetap string dan teks berawalan "=" tidak menjadi rumus', function () {
+    const stored = withLock_(function () {
+      const insp = sheet_('Inspections');
+      return readRecord_(insp, 'Inspections', findRow_(insp, inspectionId));
+    });
+    expect(stored.observed_at === observedAt, 'observed_at berubah bentuk: ' + stored.observed_at);
+    expect(stored.note === note, 'note berubah bentuk: ' + stored.note);
+  });
+
+  try {
+    const driveId = withLock_(function () {
+      return loadOwnedPhoto_(deviceId, inspectionId, photoId).rec.drive_file_id;
+    });
+    DriveApp.getFileById(driveId).setTrashed(true);
+    console.log('LULUS  bersih-bersih: file uji dibuang ke tempat sampah');
+  } catch (err) {
+    console.log('PERINGATAN  file uji tidak bisa dibuang otomatis; hapus manual file selftest di folder: ' + String(err && err.message));
+  }
+  console.log('SELF-TEST LULUS: Drive (generateIds + create + get) dan Sheets bekerja dengan kode produksi.');
+  return 'LULUS';
+}
+
 function decodeJpeg_(v) {
   let bytes;
   try {

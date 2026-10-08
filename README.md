@@ -48,6 +48,7 @@ Gunakan folder Drive dan Spreadsheet **staging** yang terpisah dari produksi.
    GATEWAY_URL=<url /exec> node checks/live.mjs
    ```
    Harus keluar 2 baris `LULUS` (gateway menjawab JSON, dan menolak pesan tanpa tanda tangan). URL `/exec` bukan rahasia, jadi boleh dibagikan untuk dicek dari luar jaringan perusahaan.
+   **Tahap A+, uji Drive dan Sheets dari editor (tanpa Vercel, tanpa terminal).** Tempel `storage.js` terbaru ke editor, pilih fungsi `adminSelfTest`, klik **Run**, dan baca *Execution log*. Semua baris harus `LULUS`, diakhiri `SELF-TEST LULUS`. Fungsi ini memakai kode storage yang sama dengan jalur produksi dan meninggalkan 1 baris di tiap tab serta 1 file yang dibuang ke tempat sampah. Fungsi yang dijalankan dari editor memakai kode terbaru tanpa deploy ulang; sebelum Tahap B buat versi baru deployment (Deploy → Manage deployments → ✏ → New version) supaya web app memakai kode yang sama.
 6. **Vercel** (project staging; paket sesuai penggunaan perusahaan): isi `GATEWAY_URL`, `GATEWAY_HMAC_SECRET` (sama dengan Script Property), `SESSION_SECRET` (berbeda, ≥ 32 karakter). Deploy.
    Awas **Deployment Protection**: URL preview Vercel biasanya dikunci login Vercel (ingatan saya, belum saya verifikasi; Vercel tidak terjangkau dari sandbox). Telepon dan skrip akan melihat halaman login, bukan aplikasi. Pakai domain production dari project staging khusus ini, atau matikan proteksi untuk project ini saja, sesuai keputusan Anda.
 7. **Tahap B, seluruh alur**, dengan kode aktivasi baru (sekali pakai):

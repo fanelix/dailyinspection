@@ -211,6 +211,14 @@ test('Drive berhasil tetapi Sheets gagal: status tetap reserved, retry memulihka
   assert.equal(filesCount(), before + 1);
 });
 
+test('adminSelfTest (diagnostik Drive+Sheets dari editor): lulus di runtime palsu dan membuang file ujinya', () => {
+  const before = filesCount();
+  assert.equal(fake.run('adminSelfTest')(), 'LULUS');
+  assert.equal(filesCount(), before + 1);
+  assert.equal([...fake.state.files.values()].at(-1).trashed, true, 'file uji dibuang ke tempat sampah');
+  assert.equal(fake.state.locked, false);
+});
+
 test('validasi foto: checksum salah, bukan JPEG, terlalu besar, ID sama beda isi', async () => {
   const a = await newDevice('Tablet A5');
   const body = prepareBody();

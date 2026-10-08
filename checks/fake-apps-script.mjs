@@ -124,7 +124,12 @@ export function createFakeAppsScript({ secret, spreadsheetId = 'sheet-test', roo
     getFileById(id) {
       const f = state.files.get(id);
       if (!f) throw new Error('File not found: ' + id);
-      return { getBlob: () => ({ getBytes: () => signed(f.bytes) }) };
+      return {
+        getBlob: () => ({ getBytes: () => signed(f.bytes) }),
+        setTrashed(trashed) {
+          f.trashed = trashed;
+        },
+      };
     },
   };
 
