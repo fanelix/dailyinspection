@@ -41,7 +41,7 @@ Gunakan folder Drive dan Spreadsheet **staging** yang terpisah dari produksi.
 1. **Siapkan** satu folder Drive (catat ID-nya) dan satu Spreadsheet kosong (catat ID-nya) di akun perusahaan.
 2. **Apps Script**: buat proyek standalone. Salin `apps-script/appsscript.json` (Project Settings → tampilkan manifest) dan isi `apps-script/src/gateway.js`, `storage.js` ke file bernama `gateway` dan `storage`. (`clasp` juga bisa, belum diuji di sesi ini.) Manifest mengaktifkan Drive advanced service v3 dan meminta scope `spreadsheets` + `drive`.
 3. **Script Properties**: `GATEWAY_HMAC_SECRET` (acak ≥ 32 karakter, mis. `openssl rand -hex 32`), `SPREADSHEET_ID`, `PHOTO_ROOT_FOLDER_ID`.
-4. **Kode aktivasi**: jalankan `adminCreateActivationCode('Nama perangkat')` dari editor (setujui otorisasi pertama), baca kode di Execution log. Kode sekali pakai, berlaku 24 jam.
+4. **Kode aktivasi**: di editor pilih fungsi `adminCreateActivationCode` pada dropdown lalu klik **Run** (setujui otorisasi pertama), dan baca kode di *Execution log*. Tombol Run tidak bisa memberi argumen, jadi nama perangkat otomatis berisi waktu penerbitan. Kode sekali pakai, berlaku 24 jam; satu kode per perangkat.
 5. **Deploy** → Web app: *Execute as: Me*, *Who has access: Anyone*. Salin URL `/exec`. Kebijakan Workspace bisa melarang "Anyone"; bila ya, itu temuan T1 yang harus diputuskan admin, bukan dilonggarkan diam-diam.
    **Tahap A, uji Apps Script saja (belum perlu Vercel).** Butuh Node 20+, tanpa `npm install`:
    ```
@@ -64,7 +64,7 @@ Gunakan folder Drive dan Spreadsheet **staging** yang terpisah dari produksi.
    - foto beresolusi sangat tinggi (≥ 48 MP) tidak membuat tab mati; bila gagal harus muncul pesan, bukan crash;
    - foto HEIC/format lain yang tidak bisa didekode perangkat ditolak dengan pesan jelas.
 
-Mencabut perangkat: jalankan `adminListDevices()` lalu `adminRevokeDevice('<deviceId>')`; penolakan berlaku pada operasi data berikutnya.
+Mencabut perangkat: jalankan `adminListDevices` (Run) untuk melihat `deviceId`, lalu tambahkan fungsi sementara di editor, mis. `function cabut() { adminRevokeDevice('<deviceId>'); }`, dan jalankan `cabut`. Penolakan berlaku pada operasi data berikutnya.
 
 ## Yang belum terbukti dan asumsi (T1)
 

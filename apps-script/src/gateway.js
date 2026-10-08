@@ -130,7 +130,8 @@ function newActivationCode_() {
 // ---- Fungsi admin: dijalankan manual dari editor Apps Script; tidak ada di allowlist doPost ----
 
 function adminCreateActivationCode(deviceName) {
-  const name = String(deviceName || '').trim();
+  // Tombol Run di editor tidak bisa memberi argumen: tanpa nama, label otomatis berisi waktu penerbitan (UTC).
+  const name = String(deviceName || 'Perangkat ' + new Date().toISOString().slice(0, 16) + 'Z').trim();
   if (name.length < 1 || name.length > 60) throw new Error('Nama perangkat harus 1-60 karakter');
   const code = newActivationCode_();
   props_().setProperty('act:' + sha256Hex_(code), JSON.stringify({ name: name, expiresAt: Date.now() + ACTIVATION_TTL_MS }));

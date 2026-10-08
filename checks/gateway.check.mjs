@@ -91,6 +91,10 @@ test('gateway menolak pesan tanpa otorisasi, kedaluwarsa, replay, dan perangkat 
 });
 
 test('aktivasi sekali pakai; sesi palsu, tanpa sesi, dan origin asing ditolak', async () => {
+  const unnamed = await newDevice(undefined); // tombol Run di editor Apps Script tidak bisa memberi nama
+  assert.equal(unnamed.res.status, 200);
+  assert.match(fake.listDevices().at(-1).name, /^Perangkat \d{4}-\d{2}-\d{2}T\d{2}:\d{2}Z$/, 'nama otomatis bila tanpa argumen');
+
   const a = await newDevice('Tablet A');
   assert.equal(a.res.status, 200);
   const setCookie = a.res.headers.get('set-cookie');
