@@ -6,13 +6,15 @@ Aplikasi web inspeksi geoteknik harian (HP/tablet Android). Rencana dan keputusa
 
 Satu inspeksi + satu foto privat: aktivasi perangkat → simpan metadata (Sheets) → unggah foto (Drive) → baca kembali, dengan retry yang tidak menggandakan file. Ada kode, pemeriksaan lokal, dan skrip pembuktian staging. **Acceptance T1 baru terpenuhi setelah `checks/live.mjs` lulus di staging dan uji Android dilakukan.**
 
-Belum ada (task berikutnya): checklist (T2), lokasi/peta (T3), kompresi foto dan finalisasi (T4), draft offline (T5), riwayat/review/ekspor (T6).
+Kompresi foto (orientasi, batas ukuran) **ditarik maju dari T4 atas keputusan pengguna**, agar uji Android memakai foto kamera asli. `docs/plan.md` tetap salinan apa adanya, jadi urutan task di sana belum diperbarui.
+
+Belum ada (task berikutnya): checklist (T2), lokasi/peta (T3), finalisasi (T4), draft offline (T5), riwayat/review/ekspor (T6).
 
 ## Perintah
 
 ```
 npm ci
-npm run check    # typecheck Next + Apps Script, lalu checks/gateway.check.mjs (tanpa jaringan)
+npm run check    # typecheck Next + Apps Script, lalu checks/gateway.check.mjs dan checks/photos.check.mjs (tanpa jaringan)
 npm run build
 npm run dev      # perlu .env.local (lihat .env.example) dan gateway sungguhan
 ```
@@ -23,14 +25,14 @@ npm run dev      # perlu .env.local (lihat .env.example) dan gateway sungguhan
 
 | Path | Isi |
 |---|---|
-| `app/page.tsx` | Aktivasi + form minimal (nama, catatan, satu foto JPEG) |
+| `app/page.tsx` | Aktivasi + form minimal (nama, catatan, satu foto); foto dikompres saat dipilih |
 | `app/api/*` | `activate`, `session`, `inspections` (prepare), `inspections/[id]/photos/[photoId]` (PUT unggah, GET baca) |
 | `lib/gateway.ts` | Klien server ke gateway: pesan bertanda HMAC, redirect Apps Script, timeout = hasil belum diketahui |
 | `lib/auth.ts` | Cookie sesi perangkat (HttpOnly, SameSite=Lax) dan cek origin |
-| `lib/photos.ts` | Batas ukuran foto dan SHA-256 (dipakai browser dan server) |
+| `lib/photos.ts` | Batas ukuran, kompresi native (`createImageBitmap` + canvas; orientasi EXIF dibakar ke piksel), SHA-256 (dipakai browser dan server) |
 | `apps-script/src/gateway.js` | `doGet`/`doPost`: verifikasi tanda tangan, timestamp, nonce; allowlist action; registri perangkat; fungsi admin |
 | `apps-script/src/storage.js` | Sheets + Drive: reservasi ID file, unggah idempoten, pemulihan |
-| `checks/` | `gateway.check.mjs` (lokal), `live.mjs` (staging), fake runtime |
+| `checks/` | `gateway.check.mjs` dan `photos.check.mjs` (lokal), `live.mjs` (staging), fake runtime |
 
 ## Memasang staging (untuk membuktikan T1)
 
@@ -47,9 +49,13 @@ Gunakan folder Drive dan Spreadsheet **staging** yang terpisah dari produksi.
    BASE_URL=https://<staging> ACTIVATION_CODE=XXXXX-XXXXX-XXXXX-XXXXX \
    GATEWAY_URL=<url /exec> node checks/live.mjs
    ```
-   Opsional: `ACTIVATION_CODE_2` (uji lintas perangkat), `PHOTO_PATH` (JPEG ≤ 2 MB).
+   Opsional: `ACTIVATION_CODE_2` (uji lintas perangkat), `PHOTO_PATH` (JPEG ≤ 2 MB; skrip ini mengirim byte apa adanya, tanpa kompresi).
 8. **Periksa manual** (tidak bisa dibuktikan skrip): tepat satu file foto di folder staging, satu baris `Photos` berstatus `stored`, foto tidak terbuka lewat tautan Drive tanpa izin.
-9. **Uji Android**: buka URL staging, aktivasi, isi form, pilih JPEG ≤ 2 MB, Kirim. Kompresi otomatis belum ada, jadi foto kamera beresolusi penuh akan ditolak dengan pesan jelas.
+9. **Uji Android**: buka URL staging, aktivasi, isi form, lalu pilih foto dari kamera dan dari galeri, Kirim. Periksa di perangkat nyata:
+   - foto **potret** tampil tegak (pratinjau, hasil baca-kembali, dan file di Drive);
+   - waktu "Menyiapkan foto…" dan apakah form tetap responsif;
+   - foto beresolusi sangat tinggi (≥ 48 MP) tidak membuat tab mati; bila gagal harus muncul pesan, bukan crash;
+   - foto HEIC/format lain yang tidak bisa didekode perangkat ditolak dengan pesan jelas.
 
 Mencabut perangkat: jalankan `adminListDevices()` lalu `adminRevokeDevice('<deviceId>')`; penolakan berlaku pada operasi data berikutnya.
 
@@ -58,7 +64,10 @@ Mencabut perangkat: jalankan `adminListDevices()` lalu `adminRevokeDevice('<devi
 - **Belum diuji pada Google sungguhan**: `Drive.Files.generateIds` + `create` dengan ID cadangan (tanda tangan dicocokkan dengan typings dan dokumen discovery REST, perilaku belum), body POST ±2,7 MB ke `doPost`, format sel Sheets, latensi/cold start, kebijakan akses deployment.
 - Scope `drive` (luas) dipakai karena folder induk bukan dibuat oleh aplikasi sehingga `drive.file` tidak cukup.
 - Kode aktivasi memakai `Utilities.getUuid()` sebagai sumber acak (80 bit); Google tidak mendokumentasikannya sebagai CSPRNG. Tidak ada pembatasan laju percobaan aktivasi.
-- Nilai usulan, belum ditetapkan pengguna atau diukur: sesi 30 hari, kode aktivasi 24 jam, toleransi jam 5 menit, TTL replay 10 menit, timeout gateway 30 dtk, `maxDuration` 60 dtk, 3 percobaan ulang (jeda 1 dtk, 2 dtk), foto JPEG ≤ 2 MB dan ≤ 5 per inspeksi (rencana §8).
+- Nilai usulan, belum ditetapkan pengguna atau diukur: sesi 30 hari, kode aktivasi 24 jam, toleransi jam 5 menit, TTL replay 10 menit, timeout gateway 30 dtk, `maxDuration` 60 dtk, 3 percobaan ulang (jeda 1 dtk, 2 dtk), foto JPEG ≤ 2 MB dan ≤ 5 per inspeksi, sisi panjang 2048 px, kualitas awal 0,8 (rencana §8).
+- Kompresi: kualitas turun 0,8 → 0,7 → 0,6 dan penjaga sumber 32 MB adalah **usulan** (lantai kualitas belum ditetapkan). Foto yang tetap > 2 MB ditolak dengan pesan, tidak diunggah diam-diam; dengan foto nyata cabang ini praktis tidak tercapai (derau seragam 2048×2048, kasus terburuk yang dicoba, berakhir 1,91 MiB).
+- Hasil kompresi **tidak membawa EXIF** (termasuk GPS dan jam kamera); orientasi sudah dibakar ke piksel. Foto asli di galeri tidak disentuh. Lokasi inspeksi akan diambil terpisah (T3).
+- Memori puncak kompresi ≈ resolusi asli yang didekode (12 MP ≈ 48 MB); belum diukur di Android. Bukti kompresi baru dari Chromium headless desktop (orientasi EXIF 1/3/6/8 cocok dengan oracle PIL, PNG transparan → latar putih), bukan dari kamera atau browser Android.
 - Foto disimpan langsung di folder root staging, tanpa struktur `YYYY/MM/AREA/INSPECTION_ID`; belum ada tab `Audit`, peran reviewer/admin, atau waktu aktivitas terakhir perangkat.
 - Pemindaian linear Sheets dan satu lock skrip cukup untuk dua petugas; evaluasi pindah backend mengikuti rencana §16.
 - Nama petugas masih teks bebas karena daftar dua inspector belum ditetapkan.

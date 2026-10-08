@@ -1,10 +1,10 @@
 'use client';
 
 // T1: satu form minimal (satu foto) untuk membuktikan jalur aktivasi -> simpan -> unggah -> baca kembali.
-// Belum ada draft offline (T5), kompresi/orientasi foto (T4), finalisasi (T4), lokasi/peta (T3).
+// Kompresi foto ditarik maju dari T4. Belum ada draft offline (T5), finalisasi (T4), lokasi/peta (T3).
 import { useEffect, useRef, useState } from 'react';
-import type { FormEvent } from 'react';
-import { MAX_PHOTO_BYTES, sha256Hex } from '../lib/photos.ts';
+import type { ChangeEvent, FormEvent } from 'react';
+import { compressPhoto, sha256Hex } from '../lib/photos.ts';
 
 const TRIES = 3; // usulan rencana §9: tiga percobaan dengan jeda bertambah
 const BACKOFF_MS = 1000;
@@ -79,29 +79,58 @@ function Activate({ onDone }: { onDone: () => void }) {
   );
 }
 
+// Salinan kerja foto yang sudah dikompres; checksum dan ID dihitung dari byte ini, bukan dari file asli.
+type Prepared = { bytes: ArrayBuffer; sha256: string; previewUrl: string };
+
+const size = (n: number) =>
+  n < 1024 * 1024 ? `${Math.max(1, Math.round(n / 1024))} KB` : `${(n / 1024 / 1024).toLocaleString('id-ID', { maximumFractionDigits: 1 })} MB`;
+
 function InspectionForm({ onExpired }: { onExpired: () => void }) {
   const [name, setName] = useState('');
   const [note, setNote] = useState('');
-  const [file, setFile] = useState<File | null>(null);
+  const [photo, setPhoto] = useState<Prepared | null>(null);
+  const [photoMsg, setPhotoMsg] = useState<Status>({ kind: 'idle', text: '' });
   const [status, setStatus] = useState<Status>({ kind: 'idle', text: '' });
   const [photoUrl, setPhotoUrl] = useState('');
   const [readBack, setReadBack] = useState('');
   // ID dipertahankan selama isi formulir sama, sehingga menekan Kirim lagi = mengulang, bukan inspeksi baru.
   const attempt = useRef<{ key: string; inspectionId: string; photoId: string; observedAt: string } | null>(null);
+  const pickToken = useRef(0);
+
+  useEffect(() => () => {
+    if (photo) URL.revokeObjectURL(photo.previewUrl);
+  }, [photo]);
+
+  // Kompres saat dipilih (bukan saat Kirim): galat dan ukuran hasil langsung terlihat, dan hanya foto yang direset
+  // bila gagal; nama dan catatan tetap utuh. Foto asli di galeri tidak disentuh.
+  async function pick(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    const token = ++pickToken.current;
+    setPhoto(null);
+    setPhotoUrl('');
+    setReadBack('');
+    if (!file) return setPhotoMsg({ kind: 'idle', text: '' });
+    setPhotoMsg({ kind: 'busy', text: 'Menyiapkan foto…' });
+    try {
+      const out = await compressPhoto(file);
+      const bytes = await out.blob.arrayBuffer();
+      const sha256 = await sha256Hex(bytes);
+      if (token !== pickToken.current) return; // pilihan yang lebih baru sudah menggantikan
+      setPhoto({ bytes, sha256, previewUrl: URL.createObjectURL(out.blob) });
+      setPhotoMsg({ kind: 'ok', text: `✔ Foto siap: ${out.width} × ${out.height} px, ${size(bytes.byteLength)} (asli ${size(file.size)}).` });
+    } catch (err) {
+      if (token === pickToken.current) setPhotoMsg({ kind: 'error', text: `✖ ${errorText(err)}` });
+    }
+  }
 
   async function submit(e: FormEvent) {
     e.preventDefault();
     setPhotoUrl('');
     setReadBack('');
-    if (!file) return setStatus({ kind: 'error', text: '✖ Pilih satu foto.' });
-    if (file.type !== 'image/jpeg') return setStatus({ kind: 'error', text: '✖ Hanya foto JPEG yang didukung pada tahap ini.' });
-    if (file.size > MAX_PHOTO_BYTES) {
-      return setStatus({ kind: 'error', text: `✖ Foto lebih dari ${MAX_PHOTO_BYTES / 1024 / 1024} MB. Kompresi otomatis belum tersedia.` });
-    }
+    if (!photo) return setStatus({ kind: 'error', text: '✖ Pilih satu foto dan tunggu sampai siap.' });
+    const { bytes, sha256 } = photo;
     setStatus({ kind: 'busy', text: 'Menyiapkan…' });
     try {
-      const bytes = await file.arrayBuffer();
-      const sha256 = await sha256Hex(bytes);
       const key = [name.trim(), note, sha256].join('\n');
       if (attempt.current?.key !== key) {
         attempt.current = { key, inspectionId: crypto.randomUUID(), photoId: crypto.randomUUID(), observedAt: new Date().toISOString() };
@@ -139,15 +168,21 @@ function InspectionForm({ onExpired }: { onExpired: () => void }) {
     }
   }
 
-  const busy = status.kind === 'busy';
+  const busy = status.kind === 'busy' || photoMsg.kind === 'busy';
   return (
     <form onSubmit={submit}>
       <label htmlFor="name">Nama petugas</label>
       <input id="name" value={name} onChange={(e) => setName(e.target.value)} maxLength={100} required />
       <label htmlFor="note">Catatan kondisi</label>
       <textarea id="note" value={note} onChange={(e) => setNote(e.target.value)} maxLength={2000} />
-      <label htmlFor="photo">Foto (JPEG, maksimal {MAX_PHOTO_BYTES / 1024 / 1024} MB)</label>
-      <input id="photo" type="file" accept="image/jpeg" onChange={(e) => setFile(e.target.files?.[0] ?? null)} required />
+      <label htmlFor="photo">Foto (kamera atau galeri; dikecilkan otomatis)</label>
+      <input id="photo" type="file" accept="image/*" onChange={pick} required />
+      {photoMsg.text && (
+        <p className={`status ${photoMsg.kind}`} role="status">
+          {photoMsg.text}
+        </p>
+      )}
+      {photo && !photoUrl && <img src={photo.previewUrl} alt="Pratinjau foto yang akan dikirim" />}
       <button type="submit" disabled={busy}>
         Kirim
       </button>

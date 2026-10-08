@@ -7,7 +7,7 @@ Rencana: `docs/plan.md` (v1.1). Kerjakan hanya task yang ditunjuk (T0–T7, §13
 Perintah (sudah dijalankan nyata):
 
 - `npm ci` — dependency sesuai lockfile
-- `npm run check` — typecheck (Next + Apps Script) dan `checks/gateway.check.mjs`
+- `npm run check` — typecheck (Next + Apps Script), `checks/gateway.check.mjs`, dan `checks/photos.check.mjs`
 - `npm run build` — build produksi Next
 
 Catatan kerja:
