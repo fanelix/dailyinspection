@@ -87,6 +87,7 @@ test('gateway menolak pesan tanpa otorisasi, kedaluwarsa, replay, dan perangkat 
 
   const health = fake.doGet();
   assert.ok(JSON.parse(health).ok && !health.includes(SECRET), 'doGet tidak membocorkan rahasia');
+  assert.match(JSON.parse(health).build, /^\d{4}-\d{2}-\d{2}\.\d+$/, 'doGet menyebut build agar kode lama yang belum di-deploy ulang terlihat');
   assert.equal(fake.state.locked, false);
 });
 

@@ -70,7 +70,8 @@ Mencabut perangkat: jalankan `adminListDevices` (Run) untuk melihat `deviceId`, 
 ## Yang belum terbukti dan asumsi (T1)
 
 - **Terbukti di Google sungguhan** (staging pengguna, 2026-10-08): akses deployment "Anyone" dari luar jaringan, HMAC dan redirect `doPost`, `Drive.Files.generateIds` + `create` dengan ID cadangan, penolakan `create` untuk ID ganda lalu verifikasi MD5 (tepat satu file), pembacaan kembali dari Drive.
-- **Sheets, diukur**: format `@` saja menahan konversi tanggal/angka tetapi **tidak** mencegah teks berawalan `=` menjadi rumus (injeksi rumus lewat nama/catatan). `writeRow_` memakai `@` + apostrof di depan setiap nilai tidak kosong; semua 13 nilai uji kembali apa adanya. Nilai asli berawalan apostrof dan sel kosong baru diuji oleh `adminSelfTest` terbaru.
+- **Sheets, diukur**: format `@` saja menahan konversi tanggal/angka tetapi **tidak** mencegah teks berawalan `=` menjadi rumus (injeksi rumus lewat nama/catatan). `writeRow_` memakai `@` + apostrof di depan setiap nilai tidak kosong; semua 13 nilai uji kembali apa adanya, dan `adminSelfTest` penuh lulus di Sheets sungguhan (termasuk teks `=…`, nama berawalan apostrof, dan sel kosong yang dibiarkan kosong).
+- **Versi gateway**: `doGet` menyebut `build`. Mengganti kode di editor **tidak** mengubah deployment web app; buat versi baru (*Manage deployments → ✏ → New version*) lalu pastikan `node checks/live.mjs` (tahap A) menampilkan build yang sama dengan `GATEWAY_BUILD` di `gateway.js`. Build kosong berarti kode lama.
 - **Belum teruji di Google sungguhan**: body POST ±2,7 MB ke `doPost`, latensi/cold start, seluruh jalur Vercel (route, cookie, `checks/live.mjs` tahap B) dan Android.
 - Scope `drive` (luas) dipakai karena folder induk bukan dibuat oleh aplikasi sehingga `drive.file` tidak cukup.
 - Kode aktivasi memakai `Utilities.getUuid()` sebagai sumber acak (80 bit); Google tidak mendokumentasikannya sebagai CSPRNG. Tidak ada pembatasan laju percobaan aktivasi.

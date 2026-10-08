@@ -56,6 +56,7 @@ if (GATEWAY_URL) {
   const health = await fetch(GATEWAY_URL).then(json).catch(() => null);
   must(health?.ok === true, 'GET gateway (health) membalas JSON ok; akses deployment tidak diblokir');
   if (health?.ok !== true) info('Bukan JSON dari gateway: biasanya halaman login Google, yaitu deployment bukan "Anyone" atau kebijakan Workspace memblokirnya.');
+  else info(`build gateway: ${health.build ?? '(kosong: kode lama; buat versi baru deployment)'}`);
   const unsigned = await fetch(GATEWAY_URL, { method: 'POST', body: JSON.stringify({ msg: '{}', sig: 'x' }) }).then(json).catch(() => null);
   must(unsigned?.ok === false && unsigned.code === 'UNAUTHORIZED', 'POST gateway tanpa tanda tangan sah ditolak (UNAUTHORIZED)');
 } else {
