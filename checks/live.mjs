@@ -2,7 +2,10 @@
 //
 //   BASE_URL=https://<staging> ACTIVATION_CODE=XXXXX-XXXXX-XXXXX-XXXXX node checks/live.mjs
 //
-// Wajib : BASE_URL, ACTIVATION_CODE (kode BARU, sekali pakai; terbitkan dengan adminCreateActivationCode)
+// Dua tahap (boleh dijalankan terpisah):
+//   Tahap A, hanya Apps Script : GATEWAY_URL=<url /exec> node checks/live.mjs
+//   Tahap B, seluruh alur      : BASE_URL + ACTIVATION_CODE (+ GATEWAY_URL agar tahap A ikut dijalankan)
+// Wajib untuk tahap B: BASE_URL, ACTIVATION_CODE (kode BARU, sekali pakai; terbitkan dengan adminCreateActivationCode)
 // Opsional: ACTIVATION_CODE_2 (perangkat kedua, untuk uji akses lintas perangkat)
 //           GATEWAY_URL      (URL /exec, untuk uji "gateway menolak pesan tanpa tanda tangan")
 //           PHOTO_PATH       (JPEG <= 2 MB; bawaan: JPEG 8x8)
@@ -16,12 +19,13 @@ import { TINY_JPEG } from './tiny-jpeg.mjs';
 
 const { BASE_URL, ACTIVATION_CODE, ACTIVATION_CODE_2, GATEWAY_URL, PHOTO_PATH } = process.env;
 const ABORT_MS = Number(process.env.ABORT_MS) || 1500;
-if (!BASE_URL || !ACTIVATION_CODE) {
-  console.error('Wajib mengisi BASE_URL dan ACTIVATION_CODE (lihat komentar di awal checks/live.mjs).');
+if (!GATEWAY_URL && !(BASE_URL && ACTIVATION_CODE)) {
+  console.error('Isi GATEWAY_URL saja (tahap A), atau BASE_URL + ACTIVATION_CODE (tahap B). Lihat komentar di awal checks/live.mjs.');
   process.exit(2);
 }
-const base = BASE_URL.replace(/\/$/, '');
-const origin = new URL(base).origin;
+const gatewayOnly = !(BASE_URL && ACTIVATION_CODE);
+const base = (BASE_URL ?? '').replace(/\/$/, '');
+const origin = base ? new URL(base).origin : '';
 const photo = PHOTO_PATH ? fs.readFileSync(PHOTO_PATH) : TINY_JPEG;
 const sha256 = createHash('sha256').update(photo).digest('hex');
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -51,24 +55,36 @@ async function activate(code) {
 if (GATEWAY_URL) {
   const health = await fetch(GATEWAY_URL).then(json).catch(() => null);
   must(health?.ok === true, 'GET gateway (health) membalas JSON ok; akses deployment tidak diblokir');
+  if (health?.ok !== true) info('Bukan JSON dari gateway: biasanya halaman login Google, yaitu deployment bukan "Anyone" atau kebijakan Workspace memblokirnya.');
   const unsigned = await fetch(GATEWAY_URL, { method: 'POST', body: JSON.stringify({ msg: '{}', sig: 'x' }) }).then(json).catch(() => null);
   must(unsigned?.ok === false && unsigned.code === 'UNAUTHORIZED', 'POST gateway tanpa tanda tangan sah ditolak (UNAUTHORIZED)');
 } else {
   info('GATEWAY_URL tidak diisi: uji gateway-langsung dilewati');
 }
+if (gatewayOnly) {
+  info('Tahap A saja (BASE_URL/ACTIVATION_CODE tidak diisi): uji aplikasi dilewati');
+  console.log(failures ? `${failures} pemeriksaan GAGAL` : 'pemeriksaan gateway lulus');
+  process.exit(failures ? 1 : 0);
+}
 
-// 2. Tanpa sesi ditolak
-must((await call('/api/session')).status === 401, 'tanpa cookie: /api/session 401');
+// 2. Tanpa sesi ditolak. Harus JSON NO_SESSION dari aplikasi kita: 401 saja bisa juga halaman login Vercel (Deployment Protection).
+const noSession = await call('/api/session');
+const noSessionBody = await json(noSession);
+must(noSession.status === 401 && noSessionBody?.code === 'NO_SESSION', 'tanpa cookie: /api/session 401 NO_SESSION (JSON dari aplikasi)');
+if (noSessionBody === null) {
+  info('Respons bukan JSON dari aplikasi. Penyebab umum: Vercel Deployment Protection (halaman login Vercel), BASE_URL salah, atau deployment belum selesai.');
+}
 const idsProbe = { inspectionId: randomUUID(), photoId: randomUUID() };
-must(
-  (await call(`/api/inspections/${idsProbe.inspectionId}/photos/${idsProbe.photoId}`)).status === 401,
-  'tanpa cookie: baca foto 401 walau ID diketahui',
-);
+const noSessionPhoto = await call(`/api/inspections/${idsProbe.inspectionId}/photos/${idsProbe.photoId}`);
+must(noSessionPhoto.status === 401 && (await json(noSessionPhoto))?.code === 'NO_SESSION', 'tanpa cookie: baca foto 401 NO_SESSION walau ID diketahui');
 
 // 3. Aktivasi sekali pakai
 const a = await activate(ACTIVATION_CODE);
 must(a.res.status === 200 && !!a.cookie, `aktivasi perangkat (HTTP ${a.res.status}${a.body?.code ? ' ' + a.body.code : ''})`);
 if (!a.cookie) {
+  if (a.body === null) info('Respons aktivasi bukan JSON dari aplikasi (lihat petunjuk di atas).');
+  else if (a.body.code === 'GATEWAY_FAILURE' || a.body.code === 'SERVER_ERROR') info('Aplikasi tidak bisa memakai gateway: periksa GATEWAY_URL dan GATEWAY_HMAC_SECRET di Vercel (harus sama dengan Script Property), lalu deploy ulang.');
+  else if (a.body.code === 'INVALID_ACTIVATION') info('Kode aktivasi salah, sudah dipakai, atau lewat 24 jam: terbitkan kode baru.');
   console.log('\nTidak bisa lanjut tanpa sesi.');
   process.exit(1);
 }

@@ -43,13 +43,20 @@ Gunakan folder Drive dan Spreadsheet **staging** yang terpisah dari produksi.
 3. **Script Properties**: `GATEWAY_HMAC_SECRET` (acak ≥ 32 karakter, mis. `openssl rand -hex 32`), `SPREADSHEET_ID`, `PHOTO_ROOT_FOLDER_ID`.
 4. **Kode aktivasi**: jalankan `adminCreateActivationCode('Nama perangkat')` dari editor (setujui otorisasi pertama), baca kode di Execution log. Kode sekali pakai, berlaku 24 jam.
 5. **Deploy** → Web app: *Execute as: Me*, *Who has access: Anyone*. Salin URL `/exec`. Kebijakan Workspace bisa melarang "Anyone"; bila ya, itu temuan T1 yang harus diputuskan admin, bukan dilonggarkan diam-diam.
-6. **Vercel** (project staging; paket sesuai penggunaan perusahaan): isi `GATEWAY_URL`, `GATEWAY_HMAC_SECRET` (sama dengan Script Property), `SESSION_SECRET` (berbeda, ≥ 32 karakter). Deploy preview.
-7. **Uji otomatis** dengan kode aktivasi baru:
+   **Tahap A, uji Apps Script saja (belum perlu Vercel).** Butuh Node 20+, tanpa `npm install`:
+   ```
+   GATEWAY_URL=<url /exec> node checks/live.mjs
+   ```
+   Harus keluar 2 baris `LULUS` (gateway menjawab JSON, dan menolak pesan tanpa tanda tangan). URL `/exec` bukan rahasia, jadi boleh dibagikan untuk dicek dari luar jaringan perusahaan.
+6. **Vercel** (project staging; paket sesuai penggunaan perusahaan): isi `GATEWAY_URL`, `GATEWAY_HMAC_SECRET` (sama dengan Script Property), `SESSION_SECRET` (berbeda, ≥ 32 karakter). Deploy.
+   Awas **Deployment Protection**: URL preview Vercel biasanya dikunci login Vercel (ingatan saya, belum saya verifikasi; Vercel tidak terjangkau dari sandbox). Telepon dan skrip akan melihat halaman login, bukan aplikasi. Pakai domain production dari project staging khusus ini, atau matikan proteksi untuk project ini saja, sesuai keputusan Anda.
+7. **Tahap B, seluruh alur**, dengan kode aktivasi baru (sekali pakai):
    ```
    BASE_URL=https://<staging> ACTIVATION_CODE=XXXXX-XXXXX-XXXXX-XXXXX \
    GATEWAY_URL=<url /exec> node checks/live.mjs
    ```
-   Opsional: `ACTIVATION_CODE_2` (uji lintas perangkat), `PHOTO_PATH` (JPEG ≤ 2 MB; skrip ini mengirim byte apa adanya, tanpa kompresi).
+   Opsional: `ACTIVATION_CODE_2` (uji lintas perangkat), `PHOTO_PATH` (JPEG ≤ 2 MB; skrip ini mengirim byte apa adanya, tanpa kompresi). Di PowerShell: `$env:BASE_URL="..."; $env:ACTIVATION_CODE="..."; $env:GATEWAY_URL="..."; node checks/live.mjs`.
+   Jika gagal: baris `INFO` di bawah `GAGAL` menyebut penyebab umum (halaman login Vercel, `GATEWAY_URL`/`GATEWAY_HMAC_SECRET` tidak cocok, kode aktivasi sudah terpakai atau lewat 24 jam).
 8. **Periksa manual** (tidak bisa dibuktikan skrip): tepat satu file foto di folder staging, satu baris `Photos` berstatus `stored`, foto tidak terbuka lewat tautan Drive tanpa izin.
 9. **Uji Android**: buka URL staging, aktivasi, isi form, lalu pilih foto dari kamera dan dari galeri, Kirim. Periksa di perangkat nyata:
    - foto **potret** tampil tegak (pratinjau, hasil baca-kembali, dan file di Drive);
