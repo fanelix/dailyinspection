@@ -170,8 +170,16 @@ function sheet_(name) {
 
 function writeRow_(sh, row, values) {
   const range = sh.getRange(row, 1, 1, values.length);
-  range.setNumberFormat('@'); // teks biasa: cegah Sheets mengubah tanggal/angka dan menafsirkan "=..." sebagai rumus
-  range.setValues([values.map(String)]);
+  // Diukur di Sheets sungguhan (probe 2026-10-08): format '@' saja menahan konversi tanggal/angka tetapi TIDAK menahan
+  // "=..." menjadi rumus (nama/catatan petugas berawalan "=" = injeksi rumus). Format '@' + apostrof di depan menyimpan
+  // semua nilai uji apa adanya; apostrofnya tidak ikut tersimpan sebagai isi. Sel kosong dibiarkan kosong.
+  range.setNumberFormat('@');
+  range.setValues([
+    values.map(function (v) {
+      const s = String(v);
+      return s === '' ? '' : "'" + s;
+    }),
+  ]);
 }
 
 function findRow_(sh, id) {
@@ -297,6 +305,7 @@ function adminSelfTest() {
   const photoId = Utilities.getUuid();
   const observedAt = new Date().toISOString();
   const note = '=uji teks, bukan rumus';
+  const inspectorName = "'kutip depan"; // apostrof di depan nilai asli harus ikut kembali (kasus yang belum pernah diukur)
   const bytes = [-1, -40, -1, -32, 0, 16, 74, 70, 73, 70, 0, 1, 1, 0, 0, 1, 0, 1, 0, 0, -1, -39]; // kerangka JFIF, bukan gambar yang bisa dibuka
   const sha256 = sha256Hex_(bytes);
   const upload = { inspectionId: inspectionId, photoId: photoId, mime: 'image/jpeg', sha256: sha256, bytesBase64: Utilities.base64Encode(bytes) };
@@ -316,7 +325,7 @@ function adminSelfTest() {
   }
 
   const prepared = step('prepareInspection: baris dibuat dan ID file Drive dicadangkan (generateIds)', function () {
-    return prepareInspection(deviceId, { inspectionId: inspectionId, inspectorName: 'Self-test', note: note, observedAt: observedAt, photoIds: [photoId] });
+    return prepareInspection(deviceId, { inspectionId: inspectionId, inspectorName: inspectorName, note: note, observedAt: observedAt, photoIds: [photoId] });
   });
   expect(prepared.photos[0].status === 'reserved', 'status foto seharusnya reserved');
 
@@ -361,6 +370,7 @@ function adminSelfTest() {
     });
     expect(stored.observed_at === observedAt, 'observed_at berubah bentuk: ' + stored.observed_at);
     expect(stored.note === note, 'note berubah bentuk: ' + stored.note);
+    expect(stored.inspector_name === inspectorName, 'inspector_name berubah bentuk: ' + stored.inspector_name);
   });
 
   try {

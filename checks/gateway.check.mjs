@@ -192,7 +192,8 @@ test('Drive berhasil tetapi Sheets gagal: status tetap reserved, retry memulihka
   const before = filesCount();
 
   fake.state.hooks.onSetValues = ({ sheet, values }) => {
-    if (sheet === 'Photos' && values[0].includes('stored')) {
+    // nilai tiba di setValues dengan apostrof penanda "paksa teks" di depan; abaikan saat mencocokkan
+    if (sheet === 'Photos' && values[0].some((v) => String(v).replace(/^'/, '') === 'stored')) {
       fake.state.hooks.onSetValues = null;
       throw new Error('Service Spreadsheets failed');
     }

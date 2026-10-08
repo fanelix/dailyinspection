@@ -73,9 +73,14 @@ export function createFakeAppsScript({ secret, spreadsheetId = 'sheet-test', roo
             values.forEach((rowValues, i) =>
               rowValues.forEach((v, j) => {
                 let stored = v;
-                if (typeof v === 'string' && !textCells.has(`${r + i},${c + j}`)) {
-                  if (/^\d{4}-\d{2}-\d{2}T/.test(v)) stored = new Date(v); // Sheets mengubah string tanggal menjadi Date
-                  else if (/^\d+$/.test(v)) stored = Number(v); // dan string angka menjadi Number
+                if (typeof v === 'string') {
+                  // Perilaku di bawah diukur di Sheets sungguhan (probe 2026-10-08), bukan asumsi:
+                  if (v.startsWith("'")) stored = v.slice(1); // apostrof depan = "paksa teks"; tidak ikut tersimpan, dengan atau tanpa format '@'
+                  else if (v.startsWith('=')) stored = '#ERROR!'; // dianggap rumus WALAU format '@' (evaluator rumus tidak ditiru)
+                  else if (!textCells.has(`${r + i},${c + j}`)) {
+                    if (/^\d{4}-\d{2}-\d{2}T/.test(v)) stored = new Date(v); // tanpa format '@': string tanggal menjadi Date
+                    else if (/^\d+$/.test(v)) stored = Number(v); // dan string angka menjadi Number
+                  }
                 }
                 (rows[r - 1 + i] ??= [])[c - 1 + j] = stored;
               }),
