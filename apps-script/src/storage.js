@@ -330,6 +330,25 @@ function adminSelfTest() {
   });
   expect(second.status === 'stored' && second.replayed === true, 'upload kedua seharusnya replay');
 
+  // Jalur pemulihan inti T1: file sudah ada di Drive tetapi barisnya belum 'stored' (mis. Sheets gagal sesudah Drive
+  // berhasil, atau respons hilang). Drive harus menolak create dengan ID yang sama, lalu kode memverifikasi isi file.
+  step('pemulihan: baris dikembalikan ke reserved; upload ulang mengenali file yang sama (MD5) dan tidak membuat file kedua', function () {
+    withLock_(function () {
+      const loaded = loadOwnedPhoto_(deviceId, inspectionId, photoId);
+      loaded.rec.status = 'reserved';
+      writeRow_(loaded.sheet, loaded.row, recordValues_('Photos', loaded.rec));
+    });
+    const healed = uploadPhoto(deviceId, upload);
+    expect(healed.status === 'stored' && healed.replayed === true, 'pemulihan seharusnya menandai stored lewat verifikasi file yang ada');
+    const files = DriveApp.getFolderById(props_().getProperty('PHOTO_ROOT_FOLDER_ID')).getFilesByName(inspectionId + '_' + photoId + '.jpg');
+    let count = 0;
+    while (files.hasNext()) {
+      files.next();
+      count++;
+    }
+    expect(count === 1, 'seharusnya tepat 1 file di folder, ditemukan ' + count);
+  });
+
   step('getPhoto: byte dibaca kembali dari Drive dan checksum cocok', function () {
     const read = getPhoto(deviceId, { inspectionId: inspectionId, photoId: photoId });
     expect(read.sha256 === sha256 && read.bytesBase64 === upload.bytesBase64, 'byte yang dibaca berbeda dari yang diunggah');

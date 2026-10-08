@@ -121,6 +121,13 @@ export function createFakeAppsScript({ secret, spreadsheetId = 'sheet-test', roo
   };
 
   const DriveApp = {
+    getFolderById: () => ({
+      getFilesByName(name) {
+        const hits = [...state.files.values()].filter((f) => f.name === name && !f.trashed);
+        let i = 0;
+        return { hasNext: () => i < hits.length, next: () => hits[i++] };
+      },
+    }),
     getFileById(id) {
       const f = state.files.get(id);
       if (!f) throw new Error('File not found: ' + id);

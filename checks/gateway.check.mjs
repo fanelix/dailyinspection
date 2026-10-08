@@ -213,8 +213,10 @@ test('Drive berhasil tetapi Sheets gagal: status tetap reserved, retry memulihka
 
 test('adminSelfTest (diagnostik Drive+Sheets dari editor): lulus di runtime palsu dan membuang file ujinya', () => {
   const before = filesCount();
+  const createsBefore = fake.state.creates;
   assert.equal(fake.run('adminSelfTest')(), 'LULUS');
   assert.equal(filesCount(), before + 1);
+  assert.equal(fake.state.creates, createsBefore + 2, 'langkah pemulihan benar-benar mencoba create ulang (jalur konflik ID Drive)');
   assert.equal([...fake.state.files.values()].at(-1).trashed, true, 'file uji dibuang ke tempat sampah');
   assert.equal(fake.state.locked, false);
 });
