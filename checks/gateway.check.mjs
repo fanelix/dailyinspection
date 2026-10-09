@@ -11,6 +11,7 @@ import { signMessage } from '../lib/gateway.ts';
 import { MAX_PHOTO_BYTES, sha256Hex } from '../lib/photos.ts';
 import * as inspections from '../app/api/inspections/route.ts';
 import * as photos from '../app/api/inspections/[id]/photos/[photoId]/route.ts';
+import { CHECKLISTS, emptyAnswers } from '../lib/inspection.ts';
 
 const ORIGIN = 'http://app.test';
 const SECRET = 'g'.repeat(48);
@@ -33,6 +34,8 @@ const prepareBody = (over = {}) => ({
   note: '=SUM(1,1) catatan uji',
   observedAt: '2026-10-08T01:02:03.000Z',
   photoIds: [randomUUID()],
+  schemaVersion: CHECKLISTS.schemaVersion, templateVersion: CHECKLISTS.templateVersion, areaId: 'pit',
+  answers: emptyAnswers('pit').map(a => ({ ...a, answer: 'not_inspected' })),
   ...over,
 });
 const prepare = (body) => call(inspections.POST, 'POST', '/api/inspections', { body: JSON.stringify(body), headers: jsonHeaders });

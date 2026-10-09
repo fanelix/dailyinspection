@@ -5,7 +5,7 @@
 // Lock hanya membungkus operasi Sheets singkat, tidak pernah transfer byte.
 
 const SHEET_COLUMNS = {
-  Inspections: ['inspection_id', 'device_id', 'inspector_name', 'observed_at', 'received_at', 'note', 'status', 'version'],
+  Inspections: ['inspection_id', 'device_id', 'inspector_name', 'observed_at', 'received_at', 'note', 'status', 'version', 'schema_version', 'template_version', 'area_id', 'checklist_json'],
   Photos: ['photo_id', 'inspection_id', 'drive_file_id', 'status', 'size', 'mime', 'sha256', 'reserved_at', 'stored_at'],
 };
 const MAX_PHOTO_BYTES = 2 * 1024 * 1024; // sama dengan lib/photos.ts; usulan rencana §8, belum diuji dengan foto nyata
@@ -22,7 +22,7 @@ function prepareInspection(payload) {
     const inspRow = findRow_(insp, v.inspectionId);
     let rec = inspRow ? readRecord_(insp, 'Inspections', inspRow) : null;
     if (rec) {
-      if (rec.inspector_name !== v.inspectorName || rec.note !== v.note || rec.observed_at !== v.observedAt) {
+      if (rec.inspector_name !== v.inspectorName || rec.note !== v.note || rec.observed_at !== v.observedAt || rec.checklist_json !== v.checklistJson) {
         throw new GatewayError('CONFLICT', 'ID inspeksi sudah dipakai dengan isi berbeda');
       }
     }
@@ -51,6 +51,10 @@ function prepareInspection(payload) {
         note: v.note,
         status: 'uploading',
         version: '1',
+        schema_version: String(v.checklist.schemaVersion),
+        template_version: v.checklist.templateVersion,
+        area_id: v.checklist.areaId,
+        checklist_json: v.checklistJson,
       };
       writeRow_(insp, insp.getLastRow() + 1, recordValues_('Inspections', rec));
     }
@@ -70,6 +74,10 @@ function prepareInspection(payload) {
       inspectionId: v.inspectionId,
       status: rec.status,
       version: Number(rec.version),
+      schemaVersion: v.checklist.schemaVersion,
+      templateVersion: v.checklist.templateVersion,
+      checklistSha256: sha256Hex_(rec.checklist_json),
+      reviewRequired: v.checklist.reviewRequired,
       photos: v.photoIds.map(function (photoId) {
         return { photoId: photoId, status: statuses[photoId] };
       }),
@@ -162,6 +170,18 @@ function sheet_(name) {
   if (!sh) {
     sh = ss.insertSheet(name);
     writeRow_(sh, 1, SHEET_COLUMNS[name]);
+  } else {
+    const expected = SHEET_COLUMNS[name];
+    const actual = sh.getRange(1, 1, 1, expected.length).getValues()[0];
+    // Only append to the known T1 header. Never reinterpret reordered/edited columns.
+    const legacyLength = name === 'Inspections' ? 8 : expected.length;
+    if (actual.every(function (value, i) { return value === expected[i]; })) return sh;
+    if (actual.slice(0, legacyLength).every(function (value, i) { return value === expected[i]; }) &&
+        actual.slice(legacyLength).every(function (value) { return value === ''; })) {
+      writeRow_(sh, 1, expected); // additive header migration; existing data rows are untouched
+    } else {
+      throw new GatewayError('INTERNAL_ERROR', 'Header ' + name + ' tidak sesuai; periksa struktur tab sebelum menulis');
+    }
   }
   return sh;
 }
@@ -263,14 +283,17 @@ function parsePrepare_(p) {
   if (typeof observedAt !== 'string' || !/^\d{4}-\d{2}-\d{2}T[\d:.]+Z$/.test(observedAt) || isNaN(Date.parse(observedAt))) {
     throw bad_('observedAt harus ISO 8601 UTC');
   }
-  if (!Array.isArray(p.photoIds) || p.photoIds.length < 1 || p.photoIds.length > MAX_PHOTOS_PER_INSPECTION) {
-    throw bad_('photoIds harus 1-' + MAX_PHOTOS_PER_INSPECTION + ' UUID');
+  if (!Array.isArray(p.photoIds) || p.photoIds.length > MAX_PHOTOS_PER_INSPECTION) {
+    throw bad_('photoIds harus 0-' + MAX_PHOTOS_PER_INSPECTION + ' UUID');
   }
   const photoIds = p.photoIds.map(function (id) {
     return requireUuid_(id, 'photoId');
   });
   if (new Set(photoIds).size !== photoIds.length) throw bad_('photoIds tidak boleh ganda');
-  return { inspectionId: inspectionId, inspectorName: inspectorName, note: note, observedAt: observedAt, photoIds: photoIds };
+  let checklist;
+  try { checklist = parseChecklist(p); } catch (err) { throw bad_(err.message); }
+  return { inspectionId: inspectionId, inspectorName: inspectorName, note: note, observedAt: observedAt, photoIds: photoIds,
+    checklist: checklist, checklistJson: JSON.stringify(checklist) };
 }
 
 function parseUpload_(p) {
@@ -318,7 +341,9 @@ function adminSelfTest() {
   }
 
   const prepared = step('prepareInspection: baris dibuat dan ID file Drive dicadangkan (generateIds)', function () {
-    return prepareInspection({ inspectionId: inspectionId, inspectorName: inspectorName, note: note, observedAt: observedAt, photoIds: [photoId] });
+    return prepareInspection({ inspectionId: inspectionId, inspectorName: inspectorName, note: note, observedAt: observedAt, photoIds: [photoId],
+      schemaVersion: CHECKLISTS.schemaVersion, templateVersion: CHECKLISTS.templateVersion, areaId: 'pit',
+      answers: emptyAnswers('pit').map(function (a) { return { itemId: a.itemId, answer: 'not_inspected', finding: null }; }) });
   });
   expect(prepared.photos[0].status === 'reserved', 'status foto seharusnya reserved');
 
@@ -364,6 +389,10 @@ function adminSelfTest() {
     expect(stored.observed_at === observedAt, 'observed_at berubah bentuk: ' + stored.observed_at);
     expect(stored.note === note, 'note berubah bentuk: ' + stored.note);
     expect(stored.inspector_name === inspectorName, 'inspector_name berubah bentuk: ' + stored.inspector_name);
+    expect(stored.template_version === CHECKLISTS.templateVersion && stored.schema_version === '2', 'versi checklist tidak tersimpan');
+    const checklist = JSON.parse(stored.checklist_json);
+    expect(checklist.answers.every(function (a) { return a.answer === 'not_inspected'; }), 'jawaban checklist berubah');
+    expect(sha256Hex_(stored.checklist_json) === prepared.checklistSha256, 'checksum checklist berubah');
   });
 
   try {

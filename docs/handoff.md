@@ -1,6 +1,28 @@
-# Serah terima sesi — 2026-10-09 (T0 dan T1 selesai; T2 berikutnya)
+# Serah terima sesi — 2026-10-09 (T2 diimplementasikan; validasi staging belum dijalankan)
 
 Dokumen ini untuk sesi baru. Baca bersama `AGENTS.md`, `CLAUDE.md`, `docs/plan.md` (v1.1, salinan apa adanya, tidak diubah) dan `README.md` (runbook staging, keputusan akses, daftar yang belum terbukti). Tidak ada rahasia, URL gateway, atau domain Vercel di sini; tanyakan ke pengguna bila perlu.
+
+## Pembaruan T2 — keputusan dan hasil terbaru
+
+Bagian ini mengungguli catatan historis T1 di bawah. Permintaan pengguna: **hanya T2**; area **Pit, Waste Dump, LGSP, Topsoil Stockpile, Sedimen Sump, DAM, Heap Leach**; checklist diminta sebagai **usulan**; nama petugas **diketik manual**, tidak perlu daftar dua nama.
+
+- Branch kerja **`codex/t2-checklists`**, mulai dari `claude/eager-carson-bqb25q` pada `50318a7`. Branch staging asal tidak diubah, karena Vercel staging melacaknya. Tidak ada merge atau deployment T2 pada sesi ini.
+- `config/checklists.json`: template `2026-10-09.draft1` (42 item, 6 per area; status usulan). `lib/inspection.ts`: tipe, jawaban awal null, validator, snapshot. `scripts/sync-checklist.mjs` menghasilkan `apps-script/src/checklist.js` agar browser/gateway memakai aturan dan katalog identik tanpa dependency baru. Jalankan `npm run sync:checklist` bila sumber berubah; `npm run check` memeriksa tidak ada drift.
+- `app/page.tsx` dan `components/ChecklistFields.tsx`: nama manual, area wajib, jawaban kosong, empat pilihan terpisah, jenis/deskripsi temuan, tautan eksplisit ke foto tunggal T1 atau alasan tanpa foto, ukuran/satuan/metode opsional. Tanpa ukuran = null. Temuan tanpa foto → `reviewRequired=true`; tidak ada penilaian geoteknik otomatis.
+- `storage.js`: validasi sebelum menulis; menambah empat kolom di akhir header T1 **yang tepat** (`schema_version`, `template_version`, `area_id`, `checklist_json`). Header diubah/tertukar ditolak; baris T1 tidak ditulis ulang. Snapshot/checklist kanonis dipakai untuk konflik retry dan checksum acknowledgment. Semua record tetap `uploading`; tidak mengimplementasikan finalisasi T4.
+- Data tanpa foto diizinkan agar pengecualian foto pada plan §6 dapat dipakai; semua temuan yang tidak dikaitkan ke foto wajib mempunyai alasan. Form tetap maksimal satu foto; foto tambahan/finalisasi/draft/peta/review/ekspor tidak dikerjakan.
+- Gateway build **`2026-10-09.2`**, schema metadata 2; envelope HMAC tetap v1. UI memeriksa versi dan SHA-256 JSON checklist, sehingga gateway lama yang mengabaikan field T2 tidak bisa memberi sukses palsu.
+- Bukti lokal: check merah (5 kasus pada T1) → hijau; `npm run check` 16 test lulus; build produksi lulus; mutation blank→no_finding terdeteksi (2 test gagal), lalu dikembalikan; review kode terpisah tidak menemukan masalah material.
+- UI Chromium headless (360/1024 px) pada `next start` + gateway tiruan lulus: semua area awal kosong, item wajib, temuan tanpa foto/review, ukuran null, retry, penolakan gateway lama, kaitan foto/unggah/baca kembali, reset area; screenshot diperiksa tanpa overflow/overlap. Harness browser sesi ini sementara, bukan bagian npm check.
+- **Belum terbukti:** gateway T2/penambahan header pada Google sungguhan, Android nyata untuk form baru, isi checklist disetujui engineer. Uji T1 historis tidak boleh disebut sebagai bukti T2.
+
+### Langkah setelah review T2 (bukan perintah mengerjakan T3)
+
+Lihat README bagian “Memperbarui staging untuk menguji T2”. Salin gateway + storage + **checklist** ke editor; jalankan `adminSelfTest`; deploy New version; cocokkan build `2026-10-09.2`; deploy frontend yang cocok; jalankan live checks terbaru dan periksa Sheets/Android. Jangan menghapus tab T1. Payload frontend T1 tanpa versi/checklist ditolak gateway T2, sehingga rollout harus dikoordinasikan. Tidak ada rahasia atau URL staging tersedia pada sesi T2 ini.
+
+---
+
+Catatan berikut merekam sesi T0/T1 sebelumnya:
 
 ## 1. Mulai dari mana
 - Repo `fanelix/dailyinspection`. **Semua pekerjaan ada di branch `claude/eager-carson-bqb25q`.** `main` di remote hanya berisi `Initial commit` (README + LICENSE); belum ada PR dan belum ada merge. Sesi baru harus memulai dari branch ini (`git fetch origin claude/eager-carson-bqb25q && git checkout claude/eager-carson-bqb25q`), bukan dari `main`, atau akan melihat repo kosong.
@@ -41,7 +63,7 @@ Check merah dulu → implementasi minimum → hijau; mutation check (rusak logik
 - Skrip harness Chromium (UI, kompresi, mode `live.mjs`) dan fixture foto hanya ada di scratchpad sesi lama dan **tidak tersimpan di repo**; tulis ulang bila dibutuhkan (Playwright global tersedia di sandbox).
 - Sisa data uji di staging (file dan baris uji), properti lama `dev:*`/`act:*` di Script Properties, dan file `probe` di editor Apps Script boleh dihapus pengguna.
 
-## 8. T2 — apa yang diminta rencana dan apa yang kurang
+## 8. T2 — kebutuhan saat serah terima T1 (telah ditangani pada pembaruan di atas)
 Acceptance (plan §13): form/checklist **berversi** dengan validasi, dan **bukti bahwa item kosong tidak menjadi "tidak ada temuan"**.
 - **Masukan pengguna yang belum ada (jangan dikarang):** daftar area (usulan plan §6: pit/lereng, waste dump, heap leach pad, dam/pond), checklist awal per jenis area (untuk review engineer; draf dari plan §6 boleh sebagai *usulan*), nama dua inspector.
 - Aturan dari plan §6: empat jawaban terpisah (**Tidak ada temuan / Ada temuan / Tidak diperiksa / Tidak berlaku**); semua jawaban awal **kosong**; "Ada temuan" → jenis temuan, deskripsi, foto, atau alasan tanpa foto + status perlu review; ukuran/satuan/metode opsional, nilai tidak diketahui **null bukan nol**; label tindak lanjut Rutin / Perlu review / Segera dilaporkan hanyalah usulan (definisi final engineer); aplikasi tidak menghitung kestabilan dan tidak menetapkan ambang geoteknik. Template berversi di `config/checklists.json` (plan §12); versi template disimpan pada inspeksi.

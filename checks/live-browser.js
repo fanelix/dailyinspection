@@ -50,19 +50,32 @@
     return { failures: failures };
   }
 
+  // Data sintetis; tidak menyatakan hasil observasi lapangan.
+  const checklist = {
+    schemaVersion: 2, templateVersion: '2026-10-09.draft1', areaId: 'pit',
+    answers: ['cracks', 'loose_material', 'slope_changes', 'seepage', 'drainage', 'access']
+      .map(itemId => ({ itemId, answer: 'not_inspected', finding: null })),
+  };
+
   // 2. Satu inspeksi + satu foto
   const inspectionId = crypto.randomUUID();
   const photoId = crypto.randomUUID();
   const photoPath = `/api/inspections/${inspectionId}/photos/${photoId}`;
   const prepareBody = JSON.stringify({
+    ...checklist,
     inspectionId,
     inspectorName: 'Uji live T1 (browser)',
     note: '=Data uji otomatis checks/live-browser.js; boleh dihapus.',
     observedAt: new Date().toISOString(),
     photoIds: [photoId],
   });
+  const incomplete = JSON.parse(prepareBody);
+  incomplete.answers[0].answer = null;
+  const blank = await post(incomplete);
+  must(blank.status === 400 && (await json(blank))?.code === 'VALIDATION_ERROR', 'jawaban kosong ditolak sebelum penyimpanan');
   const prep = await post(prepareBody);
   const prepJson = await json(prep);
+  must(prepJson?.schemaVersion === 2 && prepJson?.templateVersion === checklist.templateVersion && /^[0-9a-f]{64}$/.test(prepJson?.checklistSha256 ?? ''), 'gateway mengonfirmasi versi dan checksum checklist T2');
   must(prep.status === 200 && prepJson?.photos?.[0]?.status === 'reserved', `prepareInspection (HTTP ${prep.status}); foto berstatus reserved`);
   must((await post(prepareBody)).status === 200, 'prepareInspection diulang dengan isi sama tetap 200 (idempoten)');
   must((await post(prepareBody.replace('Uji live T1 (browser)', 'Nama lain'))).status === 409, 'ID inspeksi yang sama dengan isi berbeda ditolak (409)');
@@ -105,7 +118,7 @@
 
   // 5. Tanpa aktivasi, satu-satunya penjaga adalah pasangan ID: foto hanya terbaca dengan pasangan yang benar
   const otherInspection = crypto.randomUUID();
-  const otherPrep = await post({ inspectionId: otherInspection, inspectorName: 'Uji live T1 (pembanding)', note: '', observedAt: new Date().toISOString(), photoIds: [crypto.randomUUID()] });
+  const otherPrep = await post({ ...checklist, inspectionId: otherInspection, inspectorName: 'Uji live T1 (pembanding)', note: '', observedAt: new Date().toISOString(), photoIds: [crypto.randomUUID()] });
   must(otherPrep.status === 200, 'inspeksi pembanding dibuat');
   must((await fetch(`/api/inspections/${otherInspection}/photos/${photoId}`)).status === 404, 'foto A dengan ID inspeksi lain: 404');
   must((await fetch(`/api/inspections/${crypto.randomUUID()}/photos/${photoId}`)).status === 404, 'ID inspeksi yang tidak ada: 404');

@@ -10,7 +10,8 @@
     "build": "next build",
     "start": "next start",
     "typecheck": "tsc --noEmit && tsc -p apps-script",
-    "check": "npm run typecheck && node --test checks/gateway.check.mjs checks/photos.check.mjs"
+    "sync:checklist": "node scripts/sync-checklist.mjs",
+    "check": "node scripts/sync-checklist.mjs --check && npm run typecheck && node --test checks/*.check.mjs"
   },
   "dependencies": {
     "next": "16.3.8",

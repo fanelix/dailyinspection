@@ -13,7 +13,7 @@ body {
   background: var(--bg);
 }
 main {
-  max-width: 480px;
+  max-width: 680px;
   margin: 0 auto;
   padding: 16px;
 }
@@ -26,6 +26,7 @@ label {
   font-weight: 600;
 }
 input,
+select,
 textarea,
 button {
   box-sizing: border-box;
@@ -67,3 +68,13 @@ img {
   margin-top: 12px;
   border-radius: 8px;
 }
+h2 { font-size: 1.1rem; margin-top: 28px; }
+.form-fields { border: 0; padding: 0; margin: 0; min-width: 0; }
+.checklist-item { min-width: 0; margin: 20px 0; padding: 12px; border: 1px solid #cad6d0; border-radius: 10px; }
+legend { font-weight: 700; padding: 0 6px; }
+.hint { font-size: 0.875rem; color: #47534d; margin: 8px 0; }
+.notice { background: #eef5f0; border-left: 4px solid var(--accent); padding: 12px; }
+.choice { display: flex; align-items: center; gap: 12px; min-height: 48px; font-weight: 400; }
+.choice input { width: 22px; min-width: 22px; min-height: 22px; height: 22px; margin: 0; }
+.finding { margin-top: 12px; border-top: 1px solid #cad6d0; }
+input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-visible { outline: 3px solid #73ae91; outline-offset: 2px; }

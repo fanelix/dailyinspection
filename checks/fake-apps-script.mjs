@@ -188,7 +188,7 @@ export function createFakeAppsScript({ secret, spreadsheetId = 'sheet-test', roo
     },
     console: { log: (...a) => state.logs.push(a.join(' ')), error: (...a) => state.logs.push(a.join(' ')) },
   });
-  for (const file of ['gateway.js', 'storage.js']) {
+  for (const file of ['gateway.js', 'storage.js', 'checklist.js']) {
     vm.runInContext(fs.readFileSync(path.join(SRC, file), 'utf8'), ctx, { filename: file });
   }
   const run = (expr) => vm.runInContext(expr, ctx);

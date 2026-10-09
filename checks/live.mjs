@@ -67,19 +67,32 @@ if (probeBody?.code !== 'VALIDATION_ERROR') {
   process.exit(1);
 }
 
+// Data sintetis; tidak menyatakan hasil observasi lapangan.
+const checklist = {
+  schemaVersion: 2, templateVersion: '2026-10-09.draft1', areaId: 'pit',
+  answers: ['cracks', 'loose_material', 'slope_changes', 'seepage', 'drainage', 'access']
+    .map(itemId => ({ itemId, answer: 'not_inspected', finding: null })),
+};
+
 // 3. Satu inspeksi + satu foto
 const inspectionId = randomUUID();
 const photoId = randomUUID();
 const photoPath = `/api/inspections/${inspectionId}/photos/${photoId}`;
 const prepareBody = JSON.stringify({
+  ...checklist,
   inspectionId,
   inspectorName: 'Uji live T1',
   note: '=Data uji otomatis checks/live.mjs; boleh dihapus.',
   observedAt: new Date().toISOString(),
   photoIds: [photoId],
 });
+const incomplete = JSON.parse(prepareBody);
+incomplete.answers[0].answer = null;
+const blank = await call('/api/inspections', { method: 'POST', body: JSON.stringify(incomplete), headers: jsonHeaders });
+must(blank.status === 400 && (await json(blank))?.code === 'VALIDATION_ERROR', 'jawaban kosong ditolak sebelum penyimpanan');
 const prep = await call('/api/inspections', { method: 'POST', body: prepareBody, headers: jsonHeaders });
 const prepJson = await json(prep);
+must(prepJson?.schemaVersion === 2 && prepJson?.templateVersion === checklist.templateVersion && /^[0-9a-f]{64}$/.test(prepJson?.checklistSha256 ?? ''), 'gateway mengonfirmasi versi dan checksum checklist T2');
 must(prep.status === 200 && prepJson?.photos?.[0]?.status === 'reserved', `prepareInspection (HTTP ${prep.status}); foto berstatus reserved`);
 const prep2 = await call('/api/inspections', { method: 'POST', body: prepareBody, headers: jsonHeaders });
 must(prep2.status === 200, 'prepareInspection diulang dengan isi sama tetap 200 (idempoten)');
@@ -123,7 +136,7 @@ must(/private/.test(read.headers.get('cache-control') ?? ''), 'respons foto bert
 const otherInspection = randomUUID();
 const otherPrep = await call('/api/inspections', {
   method: 'POST',
-  body: JSON.stringify({ inspectionId: otherInspection, inspectorName: 'Uji live T1 (pembanding)', note: '', observedAt: new Date().toISOString(), photoIds: [randomUUID()] }),
+  body: JSON.stringify({ ...checklist, inspectionId: otherInspection, inspectorName: 'Uji live T1 (pembanding)', note: '', observedAt: new Date().toISOString(), photoIds: [randomUUID()] }),
   headers: jsonHeaders,
 });
 must(otherPrep.status === 200, 'inspeksi pembanding dibuat');

@@ -22,7 +22,7 @@ Perlindungan yang masih ada: HMAC gateway, validasi payload, batas 2 MB dan 5 fo
 
 **Belum ada dan perlu keputusan pengguna:** batas laju atau kuota harian. Angkanya bergantung pada kapasitas yang belum ditetapkan (rencana §16), jadi tidak saya karang. Pengaman tanpa friksi yang bisa dipertimbangkan: aturan pembatasan laju di Vercel (Firewall; ingatan saya, belum diverifikasi), dan tidak menyebarkan URL. Alternatif ringan yang pernah ditawarkan dan ditolak: tautan aktivasi sekali ketuk, dan kode tim.
 
-## Status: T1 selesai (2026-10-09); T2 menunggu masukan pengguna
+## Status: implementasi T2 selesai (bukti lokal, 2026-10-09)
 
 Satu inspeksi + satu foto privat: simpan metadata (Sheets) → unggah foto (Drive) → baca kembali, dengan retry yang tidak menggandakan file.
 
@@ -30,17 +30,60 @@ Satu inspeksi + satu foto privat: simpan metadata (Sheets) → unggah foto (Driv
 
 **Android (dilaporkan pengguna, 2026-10-09):** uji di Chrome Android dengan foto sungguhan, dari kamera dan galeri, lalu Kirim: foto tersimpan di Drive dan keterangan tersimpan di Sheets; pengguna melaporkan "semuanya berjalan". Yang **tidak tercatat**: model HP, versi Chrome, lama unggah, dan hasil per poin (foto potret tegak, resolusi sangat tinggi, HEIC).
 
-**Acceptance T1 (rencana §13) terpenuhi**: Android mengirim dan membaca foto privat, retry tidak menggandakan, dan gateway tanpa otorisasi ditolak. T2 membutuhkan masukan pengguna yang belum ada: daftar area, checklist awal untuk direview engineer, dan nama dua inspector.
+**Acceptance T1 (rencana §13) terpenuhi**: Android mengirim dan membaca foto privat, retry tidak menggandakan, dan gateway tanpa otorisasi ditolak. Masukan T2 telah diterima: tujuh area di bawah; checklist diminta sebagai usulan; nama petugas diisi manual. Tidak perlu menyediakan daftar nama inspector.
 
 Kompresi foto (orientasi, batas ukuran) **ditarik maju dari T4 atas keputusan pengguna**, agar uji Android memakai foto kamera asli. `docs/plan.md` tetap salinan apa adanya, jadi urutan task di sana belum diperbarui.
 
-Belum ada (task berikutnya): checklist (T2), lokasi/peta (T3), finalisasi (T4), draft offline (T5), riwayat/review/ekspor (T6).
+Belum ada (task berikutnya): lokasi/peta (T3), finalisasi (T4), draft offline (T5), riwayat/review/ekspor (T6).
+
+## T2: checklist usulan dan penyimpanan
+
+Branch `codex/t2-checklists` berasal dari `claude/eager-carson-bqb25q` pada commit `50318a7`. Perubahan T2 disiapkan pada branch terpisah karena branch awal terhubung langsung ke staging Vercel. Belum digabung atau di-deploy ke Google/Vercel pada sesi T2.
+
+| Area | Enam item usulan |
+|---|---|
+| Pit | Retakan; rockfall/material lepas; perubahan lereng/crest/toe; rembesan; drainase; akses/pembatas |
+| Waste Dump | Retakan/penurunan; lereng/toe; erosi; rembesan; drainase; penempatan material/akses |
+| LGSP | Retakan/penurunan; lereng/toe; pengambilan/penempatan; rembesan/genangan; drainase/erosi; akses |
+| Topsoil Stockpile | Retakan/penurunan; lereng/toe; erosi/pelindung permukaan; rembesan/genangan; drainase/sedimen; akses/aktivitas |
+| Sedimen Sump | Lereng/tanggul; muka air; inlet/outlet; akumulasi sedimen; rembesan/gerusan; akses |
+| DAM | Retakan/penurunan crest; lereng/toe; erosi/proteksi; rembesan/drain; muka air/jejak limpasan; spillway/outlet/akses |
+| Heap Leach | Retakan/penurunan; lereng/toe; genangan; rembesan; drainase/koleksi; liner/proteksi yang terlihat |
+
+- Template `2026-10-09.draft1`, schema metadata `2`, status **usulan untuk review engineer site**. Ini tidak menetapkan ambang atau menyatakan area aman. Definisi TARP/tindak lanjut final tidak dikarang.
+- Area dan semua jawaban mulai **kosong**. Enam jawaban wajib dipilih; `no_finding`, `finding`, `not_inspected`, dan `not_applicable` disimpan berbeda. Mengganti area meminta konfirmasi jika ada jawaban, kemudian mengosongkan checklist area baru.
+- `Ada temuan` membutuhkan jenis dan deskripsi, serta foto yang secara eksplisit ditandai menunjukkan temuan itu **atau** alasan tanpa foto. Tanpa foto → `reviewRequired=true` (**Perlu review**). Foto umum tidak otomatis menjadi bukti semua temuan.
+- Pengukuran opsional: nilai, satuan, dan metode harus lengkap bila diaktifkan. Tidak diukur disimpan `null`; angka nol hanya tersimpan bila benar-benar diisi. Tidak ada batas geoteknik numerik.
+- Form masih memakai maksimal satu foto T1. Data boleh dikirim tanpa foto; semua temuan tanpa foto wajib beralasan. Upload multi-foto/finalisasi tetap T4. Status record tetap `uploading`, tidak pernah `submitted` pada T2.
+- Nama petugas teks manual (1–100 karakter setelah trim), bukan pilihan nama tetap maupun identitas login.
+- Empat kolom ditambahkan di akhir `Inspections`: `schema_version`, `template_version`, `area_id`, `checklist_json`. Header T1 yang tepat dikenali dan diperluas otomatis saat akses, tanpa mengubah baris lama. Header diubah/tertukar ditolak agar data tidak salah kolom.
+- `checklist_json` menyimpan snapshot item/label/petunjuk, jawaban, rincian temuan, relasi photo ID, dan flag review. ID bukan untuk ditampilkan/dibagikan. ID inspeksi sama dengan checklist berbeda menghasilkan konflik; retry identik tidak membuat baris baru.
+- Gateway mengembalikan versi serta SHA-256 JSON checklist. UI hanya melanjutkan/sukses setelah checksum sesuai; gateway T1 yang mengabaikan kolom baru tidak boleh menghasilkan sukses palsu. Konfirmasi itu hanya metadata; foto tetap harus mendapat `stored` + checksum foto.
+
+### Memperbarui staging untuk menguji T2
+
+T2 **belum terbukti pada Google sungguhan**. Simpan salinan Spreadsheet staging sebelum pembaruan. Tidak perlu menghapus tab atau data T1.
+
+1. Salin **tiga** file `apps-script/src/gateway.js`, `storage.js`, dan **`checklist.js`** ke editor Apps Script (nama file `gateway`, `storage`, `checklist`). Isi `checklist.js` dihasilkan oleh `npm run sync:checklist`; jangan diedit terpisah.
+2. Jalankan `adminSelfTest` di editor staging. Selain uji foto T1, fungsi ini memeriksa versi/checklist/checksum pada Sheets. Periksa header tambahan dan bahwa baris T1 lama tetap utuh. Uji ini meninggalkan baris uji dan membuang foto uji ke trash.
+3. Buat **New version** untuk deployment web app. Jalankan Tahap A; `build` harus **`2026-10-09.2`**, `schemaVersion` **2**. Envelope HMAC tetap `v:1`.
+4. Deploy frontend branch T2 ke preview/staging yang disetujui, lalu jalankan `checks/live.mjs` atau `checks/live-browser.js` terbaru. Skrip kini mengirim checklist sintetis `Tidak diperiksa`, memeriksa penolakan jawaban kosong dan konfirmasi versi/checksum, lalu menguji upload/retry/baca foto.
+5. Uji Android nyata: pilih area, periksa jawaban awal kosong, isi nama manual, buat temuan berfoto serta tanpa foto/alasan, lalu periksa `checklist_json`. Checklist isi operasional tetap perlu review engineer.
+
+Gateway T2 menolak payload lama tanpa versi/checklist (tidak diisi default). Karena itu pembaruan gateway dan frontend staging perlu dikoordinasikan; frontend T1 tidak dapat mengirim inspeksi baru setelah gateway diganti. Data/foto T1 lama tetap dipertahankan. Jangan mengembalikan gateway T1 untuk menulis baris T2; pemulihan kode harus memakai pasangan frontend/gateway yang cocok dan menjaga kolom tambahan.
+
+### Bukti lokal T2
+
+- Check merah pada T1: 5 kasus gagal karena jawaban kosong/versi tidak diperiksa dan kolom belum tersedia. Setelah implementasi, `npm run check` lulus **16 test**, termasuk regresi T1; `npm run build` lulus.
+- Mutation check: sengaja mengganti jawaban kosong menjadi `no_finding` membuat dua test gagal; perubahan mutasi dibatalkan, validator dihasilkan ulang.
+- Chromium headless pada `next start` lokal + gateway tiruan: UI 360 px dan 1024 px diperiksa; 7 area mulai kosong, item wajib, temuan tanpa foto/review, ukuran null, retry tanpa duplikasi, gateway lama ditolak, kaitan foto + unggah/baca kembali, dan reset area lulus. Ini bukan uji Chrome Android nyata.
+- Review kode terpisah tidak menemukan masalah material. Tiruan Apps Script tetap tidak membuktikan perilaku Google.
 
 ## Perintah
 
 ```
 npm ci
-npm run check    # typecheck Next + Apps Script, lalu checks/gateway.check.mjs dan checks/photos.check.mjs (tanpa jaringan)
+npm run check    # cek sinkronisasi, typecheck Next + Apps Script, lalu checks/*.check.mjs (tanpa jaringan)
 npm run build
 npm run dev      # perlu .env.local (lihat .env.example) dan gateway sungguhan
 ```
@@ -51,7 +94,9 @@ npm run dev      # perlu .env.local (lihat .env.example) dan gateway sungguhan
 
 | Path | Isi |
 |---|---|
-| `app/page.tsx` | Form minimal (nama, catatan, satu foto); foto dikompres saat dipilih |
+| `app/page.tsx`, `components/ChecklistFields.tsx` | Nama manual, area, checklist, rincian temuan, catatan, dan maksimal satu foto (alur T1) |
+| `config/checklists.json`, `lib/inspection.ts` | Template usulan berversi, empat jawaban terpisah, validasi bersama, snapshot |
+| `scripts/sync-checklist.mjs`, `apps-script/src/checklist.js` | Menghasilkan validator/template yang sama untuk Apps Script; file hasil ikut di-deploy |
 | `app/api/*` | `inspections` (prepare), `inspections/[id]/photos/[photoId]` (PUT unggah, GET baca) |
 | `lib/gateway.ts` | Klien server ke gateway: pesan bertanda HMAC, redirect Apps Script, timeout = hasil belum diketahui |
 | `lib/photos.ts` | Batas ukuran, kompresi native (`createImageBitmap` + canvas; orientasi EXIF dibakar ke piksel), SHA-256 (dipakai browser dan server) |
@@ -108,4 +153,4 @@ Gunakan folder Drive dan Spreadsheet **staging** yang terpisah dari produksi.
 - Memori puncak kompresi ≈ resolusi asli yang didekode (12 MP ≈ 48 MB); belum diukur di Android. Bukti kompresi baru dari Chromium headless desktop (orientasi EXIF 1/3/6/8 cocok dengan oracle PIL, PNG transparan → latar putih), bukan dari kamera atau browser Android.
 - Foto disimpan langsung di folder root staging, tanpa struktur `YYYY/MM/AREA/INSPECTION_ID`; belum ada tab `Audit` atau peran reviewer/admin.
 - Pemindaian linear Sheets dan satu lock skrip cukup untuk dua petugas; evaluasi pindah backend mengikuti rencana §16.
-- Nama petugas masih teks bebas karena daftar dua inspector belum ditetapkan.
+- Nama petugas diisi manual sesuai keputusan pengguna 9 Oktober; tidak ada daftar nama tetap.
