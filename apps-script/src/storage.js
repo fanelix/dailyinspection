@@ -5,7 +5,7 @@
 // Lock hanya membungkus operasi Sheets singkat, tidak pernah transfer byte.
 
 const SHEET_COLUMNS = {
-  Inspections: ['inspection_id', 'device_id', 'inspector_name', 'observed_at', 'received_at', 'note', 'status', 'version', 'schema_version', 'template_version', 'area_id', 'checklist_json'],
+  Inspections: ['inspection_id', 'device_id', 'inspector_name', 'observed_at', 'received_at', 'note', 'status', 'version', 'schema_version', 'template_version', 'area_id', 'checklist_json', 'sub_area'],
   Photos: ['photo_id', 'inspection_id', 'drive_file_id', 'status', 'size', 'mime', 'sha256', 'reserved_at', 'stored_at'],
 };
 const MAX_PHOTO_BYTES = 2 * 1024 * 1024; // sama dengan lib/photos.ts; usulan rencana §8, belum diuji dengan foto nyata
@@ -55,6 +55,7 @@ function prepareInspection(payload) {
         template_version: v.checklist.templateVersion,
         area_id: v.checklist.areaId,
         checklist_json: v.checklistJson,
+        sub_area: v.checklist.subArea || '',
       };
       writeRow_(insp, insp.getLastRow() + 1, recordValues_('Inspections', rec));
     }
@@ -76,6 +77,7 @@ function prepareInspection(payload) {
       version: Number(rec.version),
       schemaVersion: v.checklist.schemaVersion,
       templateVersion: v.checklist.templateVersion,
+      subArea: rec.sub_area || null,
       checklistSha256: sha256Hex_(rec.checklist_json),
       reviewRequired: v.checklist.reviewRequired,
       photos: v.photoIds.map(function (photoId) {
@@ -173,11 +175,13 @@ function sheet_(name) {
   } else {
     const expected = SHEET_COLUMNS[name];
     const actual = sh.getRange(1, 1, 1, expected.length).getValues()[0];
-    // Only append to the known T1 header. Never reinterpret reordered/edited columns.
-    const legacyLength = name === 'Inspections' ? 8 : expected.length;
+    // Only append to known T1 (8 columns) / initial T2 (12 columns) headers.
+    const legacyLengths = name === 'Inspections' ? [8, 12] : [];
     if (actual.every(function (value, i) { return value === expected[i]; })) return sh;
-    if (actual.slice(0, legacyLength).every(function (value, i) { return value === expected[i]; }) &&
-        actual.slice(legacyLength).every(function (value) { return value === ''; })) {
+    if (legacyLengths.some(function (length) {
+      return actual.slice(0, length).every(function (value, i) { return value === expected[i]; }) &&
+        actual.slice(length).every(function (value) { return value === ''; });
+    })) {
       writeRow_(sh, 1, expected); // additive header migration; existing data rows are untouched
     } else {
       throw new GatewayError('INTERNAL_ERROR', 'Header ' + name + ' tidak sesuai; periksa struktur tab sebelum menulis');
@@ -342,7 +346,7 @@ function adminSelfTest() {
 
   const prepared = step('prepareInspection: baris dibuat dan ID file Drive dicadangkan (generateIds)', function () {
     return prepareInspection({ inspectionId: inspectionId, inspectorName: inspectorName, note: note, observedAt: observedAt, photoIds: [photoId],
-      schemaVersion: CHECKLISTS.schemaVersion, templateVersion: CHECKLISTS.templateVersion, areaId: 'pit',
+      schemaVersion: CHECKLISTS.schemaVersion, templateVersion: CHECKLISTS.templateVersion, areaId: 'pit', subArea: '=uji sub-area, bukan rumus',
       answers: emptyAnswers('pit').map(function (a) { return { itemId: a.itemId, answer: 'not_inspected', finding: null }; }) });
   });
   expect(prepared.photos[0].status === 'reserved', 'status foto seharusnya reserved');
@@ -389,6 +393,7 @@ function adminSelfTest() {
     expect(stored.observed_at === observedAt, 'observed_at berubah bentuk: ' + stored.observed_at);
     expect(stored.note === note, 'note berubah bentuk: ' + stored.note);
     expect(stored.inspector_name === inspectorName, 'inspector_name berubah bentuk: ' + stored.inspector_name);
+    expect(stored.sub_area === '=uji sub-area, bukan rumus', 'sub_area berubah bentuk: ' + stored.sub_area);
     expect(stored.template_version === CHECKLISTS.templateVersion && stored.schema_version === '2', 'versi checklist tidak tersimpan');
     const checklist = JSON.parse(stored.checklist_json);
     expect(checklist.answers.every(function (a) { return a.answer === 'not_inspected'; }), 'jawaban checklist berubah');

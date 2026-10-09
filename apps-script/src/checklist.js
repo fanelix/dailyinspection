@@ -284,6 +284,11 @@ function parseChecklist(payload) {
     const area = CHECKLISTS.areas.find(area => area.id === p.areaId);
     if (!area)
         return fail('Pilih area inspeksi.');
+    if (p.subArea != null && typeof p.subArea !== 'string')
+        return fail('Sub-area harus berupa teks.');
+    const subArea = typeof p.subArea === 'string' ? p.subArea.trim() : '';
+    if (subArea.length > 200)
+        return fail('Sub-area maksimal 200 karakter.');
     if (!Array.isArray(p.photoIds) || !p.photoIds.every(id => typeof id === 'string'))
         return fail('Daftar foto tidak valid.');
     const photoIds = p.photoIds;
@@ -330,5 +335,7 @@ function parseChecklist(payload) {
     });
     // Snapshot preserves the meaning of old records when a later template changes.
     return { schemaVersion: CHECKLISTS.schemaVersion, templateVersion: CHECKLISTS.templateVersion, areaId: area.id,
+        // Omit an empty optional field so earlier T2 snapshots/checksums remain valid on retry.
+        ...(subArea ? { subArea } : {}),
         templateSnapshot: area, templateStatus: CHECKLISTS.status, answers, reviewRequired };
 }

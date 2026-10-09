@@ -101,7 +101,7 @@ test('existing T1 headers expand additively; old rows remain unchanged; damaged 
   sheet.rows.splice(0,sheet.rows.length,oldHeader.slice(),oldRow.slice());
   fake.run('prepareInspection')(fixture());
   assert.deepEqual(sheet.rows[0].slice(0,8),oldHeader);
-  assert.deepEqual(sheet.rows[0].slice(8),['schema_version','template_version','area_id','checklist_json']);
+  assert.deepEqual(sheet.rows[0].slice(8),['schema_version','template_version','area_id','checklist_json','sub_area']);
   assert.deepEqual(sheet.rows[1],oldRow);
   sheet.rows[0][2]='wrong_column';
   assert.throws(() => fake.run('prepareInspection')(fixture()), e=>e.code==='INTERNAL_ERROR');
@@ -115,4 +115,38 @@ test('a non-finding answer cannot carry hidden finding data; invalid measurement
   reject(fake,body);
   body.answers[0].finding.measurement.value=Infinity;
   reject(fake,body);
+});
+
+test('manual sub-area is normalized, stored for every area, and protected by retry and checksum', () => {
+  const fake = setup();
+  for (const area of CHECKLISTS.areas) {
+    const body = {...fixture(), areaId:area.id, subArea:'  =Detail lokasi — bench 1  ',
+      answers:emptyAnswers(area.id).map(a=>({...a,answer:'not_inspected'}))};
+    const first = fake.run('prepareInspection')(body);
+    assert.equal(first.subArea,'=Detail lokasi — bench 1');
+    const sheet = fake.state.sheets.get('Inspections');
+    const row = sheet.rows.find(r=>r[0]===body.inspectionId);
+    const record = Object.fromEntries(sheet.rows[0].map((c,i)=>[c,row[i]]));
+    assert.equal(record.sub_area,'=Detail lokasi — bench 1');
+    assert.equal(JSON.parse(record.checklist_json).subArea,record.sub_area);
+    assert.equal(first.checklistSha256,fake.run('sha256Hex_')(record.checklist_json));
+    assert.deepEqual(plain(fake.run('prepareInspection')({...body,subArea:'=Detail lokasi — bench 1'})),plain(first));
+    assert.throws(()=>fake.run('prepareInspection')({...body,subArea:'Lokasi berbeda'}),e=>e.code==='CONFLICT');
+  }
+  for (const subArea of [123,{},[], 'x'.repeat(201)]) reject(fake,{...fixture(),subArea});
+});
+
+test('sub-area is optional; previous T2 headers and records migrate without changing saved data or retry', () => {
+  const fake = setup(), body=fixture();
+  const first=fake.run('prepareInspection')(body);
+  const sheet=fake.state.sheets.get('Inspections');
+  sheet.rows[0]=sheet.rows[0].slice(0,12);
+  sheet.rows[1]=sheet.rows[1].slice(0,12);
+  const oldRow=sheet.rows[1].slice();
+  for(const subArea of [undefined,null,'','   ']) {
+    assert.deepEqual(plain(fake.run('prepareInspection')({...body,subArea})),plain(first));
+    assert.deepEqual(sheet.rows[1],oldRow);
+    assert.equal(sheet.rows.length,2);
+  }
+  assert.equal(sheet.rows[0][12],'sub_area');
 });

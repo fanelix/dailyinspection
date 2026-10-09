@@ -52,7 +52,7 @@
 
   // Data sintetis; tidak menyatakan hasil observasi lapangan.
   const checklist = {
-    schemaVersion: 2, templateVersion: '2026-10-09.draft1', areaId: 'pit',
+    schemaVersion: 2, templateVersion: '2026-10-09.draft1', areaId: 'pit', subArea: '=Area uji - bench 1',
     answers: ['cracks', 'loose_material', 'slope_changes', 'seepage', 'drainage', 'access']
       .map(itemId => ({ itemId, answer: 'not_inspected', finding: null })),
   };
@@ -75,6 +75,7 @@
   must(blank.status === 400 && (await json(blank))?.code === 'VALIDATION_ERROR', 'jawaban kosong ditolak sebelum penyimpanan');
   const prep = await post(prepareBody);
   const prepJson = await json(prep);
+  must(prepJson?.subArea === checklist.subArea, 'gateway mengonfirmasi sub-area tersimpan');
   must(prepJson?.schemaVersion === 2 && prepJson?.templateVersion === checklist.templateVersion && /^[0-9a-f]{64}$/.test(prepJson?.checklistSha256 ?? ''), 'gateway mengonfirmasi versi dan checksum checklist T2');
   must(prep.status === 200 && prepJson?.photos?.[0]?.status === 'reserved', `prepareInspection (HTTP ${prep.status}); foto berstatus reserved`);
   must((await post(prepareBody)).status === 200, 'prepareInspection diulang dengan isi sama tetap 200 (idempoten)');
@@ -128,6 +129,7 @@
 Periksa MANUAL (tidak bisa dibuktikan dari browser):
   - Drive staging: tepat 1 file bernama ${inspectionId}_${photoId}.jpg
   - Spreadsheet staging: tab Photos punya 1 baris untuk photo_id ${photoId} berstatus stored
+  - Tab Inspections: kolom sub_area berisi teks "=Area uji - bench 1" (bukan rumus)
   - Tab Inspections: kolom note berisi teks "=Data uji ..." apa adanya (bukan #ERROR! atau hasil rumus)
   - Foto tidak dapat dibuka lewat tautan Drive tanpa izin (bukan "Anyone with the link")
 `);

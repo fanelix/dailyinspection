@@ -6,7 +6,7 @@ Rencana: `docs/plan.md` (v1.1). Kerjakan hanya task yang ditunjuk (T0–T7, §13
 
 Baca `docs/handoff.md` lebih dulu: konteks sesi sebelumnya (keputusan, jebakan, apa yang terbukti, cara memulai T2). T0/T1 ada di branch `claude/eager-carson-bqb25q`; perubahan T2 ada di `codex/t2-checklists` (turunan dari `50318a7`). Branch staging tidak diubah; `main` masih kosong.
 
-Status: T0/T1 selesai; implementasi T2 selesai dengan bukti lokal (lihat README). Checklist T2 adalah usulan untuk review engineer, bukan final. Keputusan 9 Oktober: tujuh area sesuai `config/checklists.json`; nama petugas diketik manual, tanpa daftar inspector. Jangan mengerjakan T3–T7 tanpa diminta.
+Status: T0/T1 selesai; implementasi T2 selesai dengan bukti lokal (lihat README). Checklist T2 adalah usulan untuk review engineer, bukan final. Keputusan 9 Oktober: tujuh area sesuai `config/checklists.json`; nama petugas diketik manual, tanpa daftar inspector. Sub-area/detail lokasi adalah teks manual opsional untuk setiap area. Jangan mengerjakan T3–T7 tanpa diminta.
 
 Perintah (sudah dijalankan nyata):
 

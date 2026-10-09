@@ -56,7 +56,8 @@ Branch `codex/t2-checklists` berasal dari `claude/eager-carson-bqb25q` pada comm
 - Pengukuran opsional: nilai, satuan, dan metode harus lengkap bila diaktifkan. Tidak diukur disimpan `null`; angka nol hanya tersimpan bila benar-benar diisi. Tidak ada batas geoteknik numerik.
 - Form masih memakai maksimal satu foto T1. Data boleh dikirim tanpa foto; semua temuan tanpa foto wajib beralasan. Upload multi-foto/finalisasi tetap T4. Status record tetap `uploading`, tidak pernah `submitted` pada T2.
 - Nama petugas teks manual (1–100 karakter setelah trim), bukan pilihan nama tetap maupun identitas login.
-- Empat kolom ditambahkan di akhir `Inspections`: `schema_version`, `template_version`, `area_id`, `checklist_json`. Header T1 yang tepat dikenali dan diperluas otomatis saat akses, tanpa mengubah baris lama. Header diubah/tertukar ditolak agar data tidak salah kolom.
+- **Sub-area / detail lokasi** adalah teks manual opsional untuk semua area (maksimal 200 karakter setelah trim), misalnya nama blok, bench, sektor atau bagian fasilitas. Kosong tidak diberi nama otomatis. Disimpan pada kolom `sub_area` dan snapshot; isi ini ikut checksum dan konflik retry. Saat area diganti, sub-area dikosongkan setelah konfirmasi. Header T2 awal 12 kolom diperluas menjadi 13 tanpa mengubah baris lama; payload lama tanpa sub-area tetap valid. Ini adalah detail nama lokasi; koordinat/peta tetap T3.
+- Lima kolom ditambahkan di akhir `Inspections`: `schema_version`, `template_version`, `area_id`, `checklist_json`, `sub_area`. Header T1 dan T2 awal yang tepat dikenali dan diperluas otomatis saat akses, tanpa mengubah baris lama. Header diubah/tertukar ditolak agar data tidak salah kolom.
 - `checklist_json` menyimpan snapshot item/label/petunjuk, jawaban, rincian temuan, relasi photo ID, dan flag review. ID bukan untuk ditampilkan/dibagikan. ID inspeksi sama dengan checklist berbeda menghasilkan konflik; retry identik tidak membuat baris baru.
 - Gateway mengembalikan versi serta SHA-256 JSON checklist. UI hanya melanjutkan/sukses setelah checksum sesuai; gateway T1 yang mengabaikan kolom baru tidak boleh menghasilkan sukses palsu. Konfirmasi itu hanya metadata; foto tetap harus mendapat `stored` + checksum foto.
 
@@ -66,17 +67,18 @@ T2 **belum terbukti pada Google sungguhan**. Simpan salinan Spreadsheet staging 
 
 1. Salin **tiga** file `apps-script/src/gateway.js`, `storage.js`, dan **`checklist.js`** ke editor Apps Script (nama file `gateway`, `storage`, `checklist`). Isi `checklist.js` dihasilkan oleh `npm run sync:checklist`; jangan diedit terpisah.
 2. Jalankan `adminSelfTest` di editor staging. Selain uji foto T1, fungsi ini memeriksa versi/checklist/checksum pada Sheets. Periksa header tambahan dan bahwa baris T1 lama tetap utuh. Uji ini meninggalkan baris uji dan membuang foto uji ke trash.
-3. Buat **New version** untuk deployment web app. Jalankan Tahap A; `build` harus **`2026-10-09.2`**, `schemaVersion` **2**. Envelope HMAC tetap `v:1`.
+3. Buat **New version** untuk deployment web app. Jalankan Tahap A; `build` harus **`2026-10-09.3`**, `schemaVersion` **2**. Envelope HMAC tetap `v:1`.
 4. Deploy frontend branch T2 ke preview/staging yang disetujui, lalu jalankan `checks/live.mjs` atau `checks/live-browser.js` terbaru. Skrip kini mengirim checklist sintetis `Tidak diperiksa`, memeriksa penolakan jawaban kosong dan konfirmasi versi/checksum, lalu menguji upload/retry/baca foto.
-5. Uji Android nyata: pilih area, periksa jawaban awal kosong, isi nama manual, buat temuan berfoto serta tanpa foto/alasan, lalu periksa `checklist_json`. Checklist isi operasional tetap perlu review engineer.
+5. Uji Android nyata: pilih area, periksa jawaban awal kosong, isi nama dan sub-area manual, buat temuan berfoto serta tanpa foto/alasan, lalu periksa `checklist_json` dan kolom `sub_area`. Checklist isi operasional tetap perlu review engineer.
 
 Gateway T2 menolak payload lama tanpa versi/checklist (tidak diisi default). Karena itu pembaruan gateway dan frontend staging perlu dikoordinasikan; frontend T1 tidak dapat mengirim inspeksi baru setelah gateway diganti. Data/foto T1 lama tetap dipertahankan. Jangan mengembalikan gateway T1 untuk menulis baris T2; pemulihan kode harus memakai pasangan frontend/gateway yang cocok dan menjaga kolom tambahan.
 
 ### Bukti lokal T2
 
-- Check merah pada T1: 5 kasus gagal karena jawaban kosong/versi tidak diperiksa dan kolom belum tersedia. Setelah implementasi, `npm run check` lulus **16 test**, termasuk regresi T1; `npm run build` lulus.
+- Check merah pada T1: 5 kasus gagal karena jawaban kosong/versi tidak diperiksa dan kolom belum tersedia. Setelah implementasi, `npm run check` lulus **18 test**, termasuk regresi T1; `npm run build` lulus.
 - Mutation check: sengaja mengganti jawaban kosong menjadi `no_finding` membuat dua test gagal; perubahan mutasi dibatalkan, validator dihasilkan ulang.
 - Chromium headless pada `next start` lokal + gateway tiruan: UI 360 px dan 1024 px diperiksa; 7 area mulai kosong, item wajib, temuan tanpa foto/review, ukuran null, retry tanpa duplikasi, gateway lama ditolak, kaitan foto + unggah/baca kembali, dan reset area lulus. Ini bukan uji Chrome Android nyata.
+- Revisi sub-area: dua check baru gagal sebelum implementasi lalu lulus, termasuk kompatibilitas snapshot/header T2 awal. Uji browser lokal 360/1024 px lulus: sub-area tersedia untuk ketujuh area, trim dan penyimpanan, retry identik, lokasi berubah menjadi record baru, serta konfirmasi/reset saat mengganti area. Screenshot diperiksa tanpa overflow/overlap.
 - Review kode terpisah tidak menemukan masalah material. Tiruan Apps Script tetap tidak membuktikan perilaku Google.
 
 ## Perintah

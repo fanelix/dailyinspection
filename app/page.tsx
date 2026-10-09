@@ -60,6 +60,7 @@ function InspectionForm() {
   const [name, setName] = useState('');
   const [note, setNote] = useState('');
   const [areaId, setAreaId] = useState('');
+  const [subArea, setSubArea] = useState('');
   const [answers, setAnswers] = useState<ChecklistAnswer[]>([]);
   const [photo, setPhoto] = useState<Prepared | null>(null);
   const [photoMsg, setPhotoMsg] = useState<Status>({ kind: 'idle', text: '' });
@@ -104,12 +105,12 @@ function InspectionForm() {
     if (!name.trim()) return setStatus({ kind: 'error', text: '✖ Isi nama petugas.' });
     setStatus({ kind: 'busy', text: 'Menyiapkan…' });
     try {
-      const key = JSON.stringify([name.trim(), note, areaId, answers, photo?.sha256 ?? null]);
+      const key = JSON.stringify([name.trim(), note, areaId, subArea.trim(), answers, photo?.sha256 ?? null]);
       if (attempt.current?.key !== key) {
         attempt.current = { key, inspectionId: crypto.randomUUID(), photoId: crypto.randomUUID(), observedAt: new Date().toISOString() };
       }
       const { inspectionId, photoId, observedAt } = attempt.current;
-      const checklist = parseChecklist({ schemaVersion: CHECKLISTS.schemaVersion, templateVersion: CHECKLISTS.templateVersion, areaId,
+      const checklist = parseChecklist({ schemaVersion: CHECKLISTS.schemaVersion, templateVersion: CHECKLISTS.templateVersion, areaId, subArea,
         photoIds: photo ? [photoId] : [], answers: answers.map(a => a.finding ? { ...a, finding: { ...a.finding,
           photoIds: a.finding.photoIds.map(id => id === SELECTED_PHOTO ? photoId : id) } } : a) });
       const checklistSha256 = await sha256Hex(new TextEncoder().encode(JSON.stringify(checklist)).buffer);
@@ -162,12 +163,15 @@ function InspectionForm() {
       <p className="hint">Ketik nama petugas yang melakukan inspeksi.</p>
       <label htmlFor="area">Area inspeksi</label>
       <select id="area" value={areaId} required onChange={e => {
-        if (answers.some(a => a.answer !== null) && !window.confirm('Ganti area dan kosongkan jawaban checklist area sebelumnya?')) return;
-        setAreaId(e.target.value); setAnswers(emptyAnswers(e.target.value));
+        if ((answers.some(a => a.answer !== null) || subArea.trim()) && !window.confirm('Ganti area dan kosongkan sub-area serta jawaban checklist area sebelumnya?')) return;
+        setAreaId(e.target.value); setSubArea(''); setAnswers(emptyAnswers(e.target.value));
       }}>
         <option value="">Pilih area…</option>
         {CHECKLISTS.areas.map(area => <option key={area.id} value={area.id}>{area.label}</option>)}
       </select>
+      <label htmlFor="sub-area">Sub-area / detail lokasi (opsional)</label>
+      <input id="sub-area" value={subArea} onChange={e => setSubArea(e.target.value)} maxLength={200} disabled={!areaId} aria-describedby="sub-area-hint" />
+      <p id="sub-area-hint" className="hint">Isi nama blok, bench, sektor, atau bagian lokasi di dalam area yang dipilih.</p>
       <label htmlFor="note">Catatan kondisi</label>
       <textarea id="note" value={note} onChange={(e) => setNote(e.target.value)} maxLength={2000} />
       <label htmlFor="photo">Foto inspeksi (opsional; dikecilkan otomatis)</label>
