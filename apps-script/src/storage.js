@@ -21,6 +21,11 @@ const MAX_PHOTO_BYTES = 2 * 1024 * 1024; // sama dengan lib/photos.ts; usulan re
 const MAX_PHOTOS_PER_INSPECTION = 5; // usulan rencana §8
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
+function prepareUtmInspection(payload) {
+  if (!isObject_(payload) || !isObject_(payload.location) || !isObject_(payload.location.object) || payload.location.object.utm == null) throw bad_('Snapshot UTM wajib dikonfirmasi');
+  return prepareLocatedInspection(payload);
+}
+
 function prepareLocatedInspection(payload) {
   if (!isObject_(payload) || payload.location == null) throw bad_('Lokasi objek wajib dikonfirmasi');
   return prepareInspection(payload);

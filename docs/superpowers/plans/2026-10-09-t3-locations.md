@@ -14,3 +14,7 @@ Review focus: swapped coordinate order, observer accuracy on moved pins, stale G
 5. Run the full check suite and production build. Review scoped changes, publish a stacked draft PR and verify its preview. A deployed T3 Apps Script version is required for real location acknowledgments; do not claim fake-runtime checks prove Google storage.
 
 Verification: node --test checks/location.check.mjs; npm run check; npm run build; browser manual-coordinate/pin/confirmation flow and API acknowledgments when the gateway is updated.
+
+## User-authorized UTM revision (10 October WIB)
+
+Add explicit datum/zone/hemisphere selection and manual E/N. Keep WGS84 map/GeoJSON, observer GPS and old snapshots unchanged. Use pinned Proj4js and verified PROJ/EPSG WGS84/DGN95/ID74 definitions/coverage, with operation accuracy distinguished from GPS. Preserve source UTM metadata and revalidate at storage. Reject old gateways before writes through prepareUtmInspection. Correcting manual input CRS requires preview again; changing display does not discard provenance. Generate projection.js with official MIT distribution; deploy six gateway files, build 2026-10-09.6. Check independent control points, invalid source metadata, checksum/retry/legacy compatibility, build and preview; no T4–T7.

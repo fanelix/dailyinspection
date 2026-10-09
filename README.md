@@ -27,11 +27,32 @@ Perlindungan yang masih ada: HMAC gateway, validasi payload, batas 2 MB dan 5 fo
 Pengguna meminta melanjutkan tahap berikutnya dan mengabaikan pekerjaan izin foto. T3 dikerjakan pada `codex/t3-locations`, turunan dari T2 `9979a49`. T4–T7 belum dikerjakan. Rencana implementasi: [`docs/superpowers/plans/2026-10-09-t3-locations.md`](docs/superpowers/plans/2026-10-09-t3-locations.md).
 
 - Form memerlukan **konfirmasi lokasi objek**: GPS petugas yang dipilih secara eksplisit sebagai objek, pin peta yang dapat digeser, lokasi tersimpan, atau latitude/longitude manual. GPS diambil hanya saat tombol ditekan; izin ditolak/tidak tersedia/timeout tetap memungkinkan pilihan lain. Perubahan lokasi/area membatalkan konfirmasi. Respons GPS lama dibatalkan ketika pengguna mengedit pilihan atau mengganti area.
-- GPS petugas menyimpan latitude, longitude, akurasi meter dan waktu perangkat. Objek disimpan terpisah dengan metode dan waktu pemilihan. Pin/koordinat/lokasi tersimpan **tidak mewarisi akurasi GPS petugas**. Metadata sumber lokasi tersimpan ada di snapshotnya. Tidak ada batas akurasi wajib, konversi UTM/grid tambang, nilai RL, koordinat site, atau batas area yang dikarang.
+- GPS petugas menyimpan latitude, longitude, akurasi meter dan waktu perangkat. Objek disimpan terpisah dengan metode dan waktu pemilihan. Pin/koordinat/lokasi tersimpan **tidak mewarisi akurasi GPS petugas**. Metadata sumber lokasi tersimpan ada di snapshotnya. Tidak ada batas akurasi wajib, grid tambang, nilai RL, koordinat site, atau batas area yang dikarang. Pilihan UTM dijelaskan di bawah.
 - Leaflet **1.9.4 stable** dimuat hanya di browser. Latar OpenStreetMap adalah konteks umum, memakai atribusi terlihat dan tile standar tanpa prefetch/offline. Belum ada layer batas site yang terverifikasi. Tampilan awal dunia tidak memiliki pin objek; angka nol tetap valid jika dipilih manual.
 - `location_json` ditambahkan **setelah `sub_area`**: skema staging `Inspections` 23 → 24 kolom (**X**); skema sederhana 13 → 14. Header/baris lama dipertahankan. Lokasi berversi 1 memakai `EPSG:4326`. SHA-256 lokasi dikonfirmasi sebelum UI memberi sukses; perubahan lokasi dengan ID inspeksi sama ditolak. Retry T2 tanpa lokasi tetap valid dan tidak menulis ulang baris lama.
 - Frontend T3 memakai action **`prepareLocatedInspection`**. Gateway T2 menolak action ini sebelum menulis, sehingga rollout yang belum lengkap tidak menghasilkan catatan T3 tanpa lokasi. Action `prepareInspection` tetap melayani T2.
 - Tautan **Unduh titik objek (GeoJSON)** mengekspor titik yang dikonfirmasi pada form dengan urutan **[longitude, latitude]**. Ini bukan ekspor riwayat inspeksi T6 dan bukan bukti titik sudah tersimpan server.
+
+### UTM dengan datum/zona yang dipilih — revisi pengguna 10 Oktober WIB
+
+Form mulai dalam mode UTM, datum WGS84; zona dan belahan bumi **kosong** sampai dipilih. Pilih datum, zona, N (utara) / S (selatan), lalu isi Easting/Northing dalam meter dan **Pratinjau → Konfirmasi**. Mode WGS84 latitude/longitude tetap tersedia. GPS/pin/master dapat ditampilkan sebagai UTM; lokasi objek tetap terpisah dari GPS petugas.
+
+| Datum | CRS dan transformasi yang didukung |
+| --- | --- |
+| WGS84 | Zona 1–60 N/S, EPSG:32601–32660 / 32701–32760; tanpa pergeseran datum |
+| DGN95 | CRS UTM Indonesia dalam `config/utm-crs.json`; EPSG:15912, pendekatan DGN95→WGS84 dengan akurasi transformasi 1 m |
+| ID74 | CRS UTM Indonesia dalam katalog yang sama; EPSG:1833, pendekatan ID74→WGS84 dengan akurasi transformasi 3 m |
+
+- Cakupan zona/belahan bumi/datum diperiksa sebagai irisan area CRS dengan N/S dan batas latitude UTM −80° hingga 84°. Kombinasi regional yang tidak mempunyai CRS tidak bisa dipilih. SRGI2013/epoch dan grid site belum didukung; parameter survey tidak diasumsikan dari nama tempat.
+- Mengubah datum/zona/belahan membatalkan konfirmasi. Untuk **input UTM manual**, pasangan E/N dipertahankan tetapi titik dikosongkan; preview ulang mengartikan input dengan CRS baru. Untuk GPS/pin/master, pilihan baru memproyeksikan titik fisik yang sama; CRS di luar cakupan ditolak. Mengganti mode tampilan saja mempertahankan sumber UTM yang sudah dipreview.
+- Snapshot opsional `object.utm` menyimpan angka E/N asli, datum, zona, belahan bumi, kode CRS, operasi transformasi, dan akurasi operasi. WGS84 tetap koordinat utama; gateway menghitung konversi ulang dan menolak snapshot/metadata yang berbeda. Akurasi operasi datum bukan akurasi GPS, bukan RL, dan bukan jaminan survey. Angka tampilan tiga desimal bukan ketelitian milimeter.
+- GeoJSON tetap memakai `[longitude, latitude]` WGS84; sumber UTM ada pada `properties.utm`. Checklist/header tidak berubah dari T3, tetap memakai `location_json` di X. Snapshot T3 lama tanpa UTM tetap byte-kompatibel dan dapat di-retry.
+- Payload UTM memakai action **`prepareUtmInspection`**, sehingga gateway T3 lama menolak **sebelum write**. Gateway terbaru build **`2026-10-09.6`** memerlukan file tambahan **`projection.js`**. File itu memuat distribusi resmi Proj4js **2.22.0** dengan lisensi MIT; dipin bersama npm lockfile dan diperiksa generator, tidak memakai CDN/runtime fetch. `location.js` tetap diperiksa checkJs; file vendor saja dikecualikan dari pemeriksaan source pihak ketiga.
+- Dependency proyeksi ditambahkan karena browser/stdlib tidak menyediakan UTM atau transformasi datum. Definisi/area/parameter dan kontrol diperiksa pada PROJ **9.8.1**, database EPSG **v12.029 (2025-10-02)**. ID74 EPSG:1833 memakai konvensi coordinate-frame; tanda rotasi dibalik untuk `+towgs84` position-vector. Transformasi 2D tidak memakai altitude sebagai RL.
+
+Sumber primer: [API/axis order/transformasi Proj4js](https://proj4js.org/), [UTM PROJ](https://proj.org/en/stable/operations/projections/utm.html), [basis definisi PROJ/EPSG](https://github.com/OSGeo/PROJ/tree/master/data/sql), dan [BIG: datum/epoch/UTM](https://srgi.big.go.id/page/transformasi-koordinat). Untuk operasional, pilih referensi yang sesuai dokumen survey site.
+
+**Bukti lokal revisi UTM:** lima check baru merah karena fungsi belum tersedia, lalu hijau; seluruh **37/37** check dan build produksi lulus. Kontrol independen utara/selatan/DGN95/ID74, batas zona/datum, blank≠nol, payload palsu, checksum/retry, GeoJSON dan penolakan gateway T3 lama diuji. Pemeriksaan UI preview serta persistensi Google untuk revisi ini dicatat setelah publikasi; belum diklaim di sini.
 
 ### Lokasi tersimpan memakai tab yang sudah ada
 
@@ -51,8 +72,8 @@ Kolom proyeksi (`source_x/y`) dan layer tetap dipertahankan, tidak ditransformas
 
 ### Memperbarui Apps Script untuk T3
 
-1. Pakai proyek dan `SPREADSHEET_ID` staging yang sama. Salin **lima** file dari `apps-script/src`: `gateway.js`, `storage.js`, `checklist.js`, **`location.js`**, **`locations.js`** ke editor (nama tanpa `.js`). `location.js` dihasilkan `npm run sync:location`; `checklist.js` dihasilkan `npm run sync:checklist`.
-2. Script Properties dan manifest tidak perlu diganti. **Deploy → Manage deployments → Edit → New version → Deploy** pada deployment yang sama. Mengganti isi editor saja tidak memperbarui web app. Build health `doGet` yang diharapkan: **`2026-10-09.5`**, schema checklist tetap 2.
+1. Pakai proyek dan `SPREADSHEET_ID` staging yang sama. Salin **enam** file dari `apps-script/src`: `gateway.js`, `storage.js`, `checklist.js`, **`location.js`**, **`locations.js`**, dan **`projection.js`** ke editor (nama tanpa `.js`). `location.js` dihasilkan `npm run sync:location`; `checklist.js` dihasilkan `npm run sync:checklist`.
+2. Script Properties dan manifest tidak perlu diganti. **Deploy → Manage deployments → Edit → New version → Deploy** pada deployment yang sama. Mengganti isi editor saja tidak memperbarui web app. Build health `doGet` yang diharapkan: **`2026-10-09.6`**, schema checklist tetap 2.
 3. Gunakan preview branch T3. Uji nama/sub-area manual, titik sintetis, konfirmasi, kirim, retry; periksa `Inspections!X` dan checksum acknowledgment. Master nyata hanya diisi dengan koordinat terverifikasi milik site.
 4. Di Android nyata, uji izin GPS ditolak, timeout/tidak tersedia, lalu koordinat manual; uji GPS petugas dan pin objek berbeda. Pengujian GPS/perizinan perangkat belum terbukti oleh pemeriksaan Node.
 
@@ -60,7 +81,7 @@ Kolom proyeksi (`source_x/y`) dan layer tetap dipertahankan, tidak ditransformas
 
 **Bukti preview T3, source `aa8b0b9`:** Vercel Ready; PR [#2](https://github.com/fanelix/dailyinspection/pull/2) draft bertumpuk di atas T2. Cloud browser menguji nama/sub-area manual, enam `not_inspected`, penolakan koordinat kosong/lokasi belum dikonfirmasi, preview/konfirmasi koordinat sintetis, perubahan membatalkan konfirmasi serta tautan ekspor, klik pin menghasilkan metode `manual_pin` dengan akurasi null, dan konfirmasi ulang. Refresh master mempertahankan nama/sub-area/semua jawaban. Payload tautan GeoJSON diamati [longitude, latitude]; penangkapan unduhan browser timeout, sehingga file unduhan aktual belum diverifikasi. Screenshot diperiksa.
 
-**Rollout masih menunggu Apps Script:** kiriman T3 ke gateway yang terpasang ditolak dengan pesan layanan lokasi belum diperbarui. Pembacaan sebelum/sesudah pada `Inspections!A1:X80` dan `Photos!A1:N80` identik (28/17 baris terisi termasuk header); tidak ada penulisan T3 pada rentang tersebut. API master juga belum didukung gateway lama. Penyimpanan lokasi Google, daftar master nyata, GPS/izin Android dan drag pin Android belum terbukti. T3 belum dinyatakan memenuhi seluruh acceptance; ikuti runbook lima file di atas, lalu uji ulang.
+**Rollout masih menunggu Apps Script:** kiriman T3 ke gateway yang terpasang ditolak dengan pesan layanan lokasi belum diperbarui. Pembacaan sebelum/sesudah pada `Inspections!A1:X80` dan `Photos!A1:N80` identik (28/17 baris terisi termasuk header); tidak ada penulisan T3 pada rentang tersebut. API master juga belum didukung gateway lama. Penyimpanan lokasi Google, daftar master nyata, GPS/izin Android dan drag pin Android belum terbukti. T3 belum dinyatakan memenuhi seluruh acceptance; ikuti runbook enam file di atas, lalu uji ulang.
 
 ## Status historis: implementasi dan uji fungsi T2 di preview (2026-10-09)
 

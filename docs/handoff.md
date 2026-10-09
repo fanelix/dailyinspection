@@ -2,6 +2,14 @@
 
 Dokumen ini untuk sesi baru. Baca bersama `AGENTS.md`, `CLAUDE.md`, `docs/plan.md` (v1.1, salinan apa adanya, tidak diubah) dan `README.md` (runbook staging, keputusan akses, daftar yang belum terbukti). Tidak ada rahasia, URL gateway, atau domain Vercel di sini; tanyakan ke pengguna bila perlu.
 
+## Revisi UTM — 10 Oktober WIB
+
+Pengguna meminta pemilihan zona dan datum UTM agar fleksibel. Revisi tetap T3 pada `codex/t3-locations`; dasar `3cad0b5`. Form UTM memakai zona/belahan kosong sampai dipilih, datum WGS84 default; DGN95 dan ID74 juga didukung dalam cakupan CRS Indonesia. Proj4js 2.22.0 dipin; PROJ 9.8.1/EPSG v12.029 memverifikasi definisi/kontrol. EPSG:15912 DGN95≈WGS84 akurasi operasi 1 m; EPSG:1833 ID74→WGS84 akurasi operasi 3 m. Tidak otomatis mendukung datum dinamis SRGI2013/epoch atau grid/RL.
+
+Snapshot `object.utm` opsional mempertahankan input asli dan CRS/operasi; koordinat utama/GeoJSON tetap WGS84 `[lon,lat]`. Gateway memverifikasi ulang; JSON/retry T3 sebelumnya tetap sama bila tanpa UTM. Action `prepareUtmInspection` menolak gateway lama sebelum write. Zona/datum/belahan membatalkan konfirmasi; manual UTM perlu preview ulang, GPS/pin tetap titik fisik yang sama. Perubahan tampilan saja mempertahankan sumber UTM.
+
+Runbook terbaru README: **enam file**, termasuk file vendor generated **projection**, deploy New version build **2026-10-09.6**; Spreadsheet/properties/manifest tetap. Koneksi tersedia belum menyediakan editor/deploy Apps Script. Lima check merah→hijau; **37/37** check dan build produksi lulus. Bukti preview/publikasi terbaru perlu dicatat setelah verifikasi; uji Google/Android belum diklaim. Tidak ada T4–T7, perubahan izin, merge/promosi Production.
+
 ## Pembaruan T3 — mengungguli instruksi scope historis T2
 
 Pengguna: **“Abaikan izin fotonya, kerjakan selanjutnya”**. Lanjut T3 saja; izin foto tidak diubah, T4–T7 belum diminta. Branch `codex/t3-locations` dibuat dalam worktree terpisah dari T2 `9979a49`; branch T2/Production tidak diubah. Rencana: `docs/superpowers/plans/2026-10-09-t3-locations.md`.
