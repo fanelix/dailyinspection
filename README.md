@@ -51,7 +51,7 @@ npm run dev      # perlu .env.local (lihat .env.example) dan gateway sungguhan
 | `lib/photos.ts` | Batas ukuran, kompresi native (`createImageBitmap` + canvas; orientasi EXIF dibakar ke piksel), SHA-256 (dipakai browser dan server) |
 | `apps-script/src/gateway.js` | `doGet`/`doPost`: verifikasi tanda tangan, timestamp, nonce; allowlist action; build marker |
 | `apps-script/src/storage.js` | Sheets + Drive: reservasi ID file, unggah idempoten, pemulihan, `adminSelfTest` |
-| `checks/` | `gateway.check.mjs` dan `photos.check.mjs` (lokal), `live.mjs` (staging), fake runtime |
+| `checks/` | `gateway.check.mjs` dan `photos.check.mjs` (lokal), `live.mjs` (staging, Node), `live-browser.js` (staging, tempel di Console), fake runtime |
 
 ## Memasang staging (untuk membuktikan T1)
 
@@ -78,6 +78,7 @@ Gunakan folder Drive dan Spreadsheet **staging** yang terpisah dari produksi.
    BASE_URL=https://<staging> GATEWAY_URL=<url /exec> node checks/live.mjs
    ```
    Opsional: `PHOTO_PATH` (JPEG ≤ 2 MB; skrip ini mengirim byte apa adanya, tanpa kompresi). Di PowerShell: `$env:BASE_URL="..."; $env:GATEWAY_URL="..."; node checks/live.mjs`.
+   **Laptop terkunci (tanpa hak admin untuk memasang Node):** buka halaman aplikasi, tekan F12 → *Console*, ketik `allow pasting` bila Chrome meminta, lalu tempel seluruh isi `checks/live-browser.js` dan Enter. Itu setara Tahap B (tanpa pemeriksaan gateway-langsung, karena browser tidak boleh memanggil `script.google.com`; Tahap A tetap dijalankan dari terminal oleh siapa pun yang punya Node). Kodenya hanya memanggil origin yang sama. Jika DevTools dilarang kebijakan perusahaan: GitHub Codespaces (terminal di browser, Node sudah ada) atau Node versi ZIP portabel dari nodejs.org.
    Pemeriksaan pertamanya (`POST /api/inspections` dengan body kosong harus dijawab `400 VALIDATION_ERROR`) sekaligus membuktikan aplikasi, `GATEWAY_URL`, dan HMAC bekerja. Jika gagal, baris `INFO` di bawah `GAGAL` menyebut penyebab umum (halaman login Vercel, `GATEWAY_URL`/`GATEWAY_HMAC_SECRET` tidak cocok atau belum deploy ulang).
 7. **Periksa manual** (tidak bisa dibuktikan skrip): tepat satu file foto di folder staging, satu baris `Photos` berstatus `stored`, kolom `note` di `Inspections` berisi teks `=Data uji …` apa adanya (bukan `#ERROR!`), foto tidak terbuka lewat tautan Drive tanpa izin.
 8. **Uji Android**: buka URL staging, isi form, lalu pilih foto dari kamera dan dari galeri, Kirim. Periksa di perangkat nyata:
