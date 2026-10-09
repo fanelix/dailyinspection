@@ -4,6 +4,8 @@
 
 Rencana: `docs/plan.md` (v1.1). Kerjakan hanya task yang ditunjuk (T0–T7, §13). Jangan lanjut ke task berikutnya bila acceptance criteria belum terpenuhi.
 
+Baca `docs/handoff.md` lebih dulu: konteks sesi sebelumnya (keputusan, jebakan, apa yang terbukti, cara memulai T2). Semua kerja ada di branch `claude/eager-carson-bqb25q`; `main` masih kosong.
+
 Status: T0 dan T1 selesai (2026-10-09, lihat README). T2 menunggu masukan pengguna (daftar area, checklist awal untuk review engineer, nama dua inspector); jangan mengarang isinya.
 
 Perintah (sudah dijalankan nyata):
