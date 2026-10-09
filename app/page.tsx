@@ -1,7 +1,8 @@
 'use client';
 
-// T1: satu form minimal (satu foto) untuk membuktikan jalur aktivasi -> simpan -> unggah -> baca kembali.
-// Kompresi foto ditarik maju dari T4. Belum ada draft offline (T5), finalisasi (T4), lokasi/peta (T3).
+// T1: satu form minimal (satu foto) untuk membuktikan jalur simpan -> unggah -> baca kembali.
+// Tanpa aktivasi perangkat (keputusan pengguna 2026-10-09). Kompresi foto ditarik maju dari T4.
+// Belum ada draft offline (T5), finalisasi (T4), lokasi/peta (T3).
 import { useEffect, useRef, useState } from 'react';
 import type { ChangeEvent, FormEvent } from 'react';
 import { compressPhoto, sha256Hex } from '../lib/photos.ts';
@@ -26,7 +27,7 @@ const errorText = (err: unknown) => (err instanceof Error ? err.message : 'Terja
 
 // Mengulang hanya bila hasil belum diketahui (jaringan/timeout) atau server menandai retryable.
 // Permintaan invalid (4xx) tidak diulang. ID tidak pernah dibuat ulang saat mengulang.
-async function api(path: string, init: RequestInit, tries = TRIES) {
+async function api(path: string, init: RequestInit) {
   for (let attempt = 1; ; attempt++) {
     let res: Response | null = null;
     try {
@@ -37,7 +38,7 @@ async function api(path: string, init: RequestInit, tries = TRIES) {
     const body = res ? await res.json().catch(() => null) : null;
     if (res?.ok) return body;
     const retryable = res === null || body?.retryable === true;
-    if (!retryable || attempt >= tries) {
+    if (!retryable || attempt >= TRIES) {
       throw new ApiError(res?.status ?? 0, body?.code ?? 'NETWORK', body?.message ?? 'Tidak ada respons dari server');
     }
     await sleep(BACKOFF_MS * 2 ** (attempt - 1));
@@ -46,46 +47,13 @@ async function api(path: string, init: RequestInit, tries = TRIES) {
 
 type Status = { kind: 'idle' | 'busy' | 'ok' | 'error'; text: string };
 
-function Activate({ onDone }: { onDone: () => void }) {
-  const [code, setCode] = useState('');
-  const [status, setStatus] = useState<Status>({ kind: 'idle', text: '' });
-
-  async function submit(e: FormEvent) {
-    e.preventDefault();
-    setStatus({ kind: 'busy', text: 'Mengaktifkan…' });
-    try {
-      // tries=1: kode aktivasi sekali pakai, mengulang setelah respons hilang justru akan ditolak
-      await api('/api/activate', { method: 'POST', headers: JSON_HEADERS, body: JSON.stringify({ code }) }, 1);
-      onDone();
-    } catch (err) {
-      setStatus({ kind: 'error', text: `✖ ${errorText(err)}` });
-    }
-  }
-
-  return (
-    <form onSubmit={submit}>
-      <p>Perangkat ini belum diaktivasi. Masukkan kode aktivasi dari admin.</p>
-      <label htmlFor="code">Kode aktivasi</label>
-      <input id="code" value={code} onChange={(e) => setCode(e.target.value)} autoComplete="off" autoCapitalize="characters" required />
-      <button type="submit" disabled={status.kind === 'busy'}>
-        Aktifkan perangkat
-      </button>
-      {status.text && (
-        <p className={`status ${status.kind}`} role="status">
-          {status.text}
-        </p>
-      )}
-    </form>
-  );
-}
-
 // Salinan kerja foto yang sudah dikompres; checksum dan ID dihitung dari byte ini, bukan dari file asli.
 type Prepared = { bytes: ArrayBuffer; sha256: string; previewUrl: string };
 
 const size = (n: number) =>
   n < 1024 * 1024 ? `${Math.max(1, Math.round(n / 1024))} KB` : `${(n / 1024 / 1024).toLocaleString('id-ID', { maximumFractionDigits: 1 })} MB`;
 
-function InspectionForm({ onExpired }: { onExpired: () => void }) {
+function InspectionForm() {
   const [name, setName] = useState('');
   const [note, setNote] = useState('');
   const [photo, setPhoto] = useState<Prepared | null>(null);
@@ -157,7 +125,6 @@ function InspectionForm({ onExpired }: { onExpired: () => void }) {
           : '✔ Data dan foto tersimpan di server. Inspeksi belum difinalisasi.',
       });
     } catch (err) {
-      if (err instanceof ApiError && err.status === 401) return onExpired();
       const unknown = err instanceof ApiError && (err.status === 0 || err.status === 504);
       setStatus({
         kind: 'error',
@@ -207,21 +174,10 @@ function InspectionForm({ onExpired }: { onExpired: () => void }) {
 }
 
 export default function Home() {
-  const [session, setSession] = useState<'checking' | 'none' | 'active' | 'unknown'>('checking');
-
-  useEffect(() => {
-    fetch('/api/session')
-      .then((r) => setSession(r.ok ? 'active' : r.status === 401 ? 'none' : 'unknown'))
-      .catch(() => setSession('unknown'));
-  }, []);
-
   return (
     <main>
       <h1>Inspeksi Geoteknik Harian</h1>
-      {session === 'checking' && <p>Memeriksa perangkat…</p>}
-      {session === 'unknown' && <p className="status error">✖ Tidak bisa memeriksa sesi perangkat. Periksa koneksi lalu muat ulang.</p>}
-      {session === 'none' && <Activate onDone={() => setSession('active')} />}
-      {session === 'active' && <InspectionForm onExpired={() => setSession('none')} />}
+      <InspectionForm />
     </main>
   );
 }

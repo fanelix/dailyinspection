@@ -1,5 +1,4 @@
-// Penyimpanan: Sheets (metadata) + Drive (foto privat). Hanya dipanggil dari gateway.js setelah pesan terverifikasi
-// dan perangkat terbukti aktif.
+// Penyimpanan: Sheets (metadata) + Drive (foto privat). Hanya dipanggil dari gateway.js setelah pesan terverifikasi.
 // Sheets dan Drive tidak punya transaksi bersama, jadi urutan tulis dipilih agar kegagalan di tengah pulih dengan mengulang:
 //   prepare : reservasi ID file Drive (generateIds) dan simpan petanya SEBELUM byte apa pun diunggah
 //   upload  : byte ke Drive dengan ID cadangan -> baru baris Photos ditandai 'stored'
@@ -13,7 +12,7 @@ const MAX_PHOTO_BYTES = 2 * 1024 * 1024; // sama dengan lib/photos.ts; usulan re
 const MAX_PHOTOS_PER_INSPECTION = 5; // usulan rencana §8
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
-function prepareInspection(deviceId, payload) {
+function prepareInspection(payload) {
   const v = parsePrepare_(payload);
   return withLock_(function () {
     const insp = sheet_('Inspections');
@@ -23,7 +22,6 @@ function prepareInspection(deviceId, payload) {
     const inspRow = findRow_(insp, v.inspectionId);
     let rec = inspRow ? readRecord_(insp, 'Inspections', inspRow) : null;
     if (rec) {
-      if (rec.device_id !== deviceId) throw new GatewayError('FORBIDDEN', 'Inspeksi milik perangkat lain');
       if (rec.inspector_name !== v.inspectorName || rec.note !== v.note || rec.observed_at !== v.observedAt) {
         throw new GatewayError('CONFLICT', 'ID inspeksi sudah dipakai dengan isi berbeda');
       }
@@ -46,7 +44,7 @@ function prepareInspection(deviceId, payload) {
     if (!rec) {
       rec = {
         inspection_id: v.inspectionId,
-        device_id: deviceId,
+        device_id: '', // kolom dipertahankan agar sheet staging yang sudah ada tetap cocok; tidak lagi diisi (tanpa aktivasi)
         inspector_name: v.inspectorName,
         observed_at: v.observedAt,
         received_at: now,
@@ -79,12 +77,12 @@ function prepareInspection(deviceId, payload) {
   });
 }
 
-function uploadPhoto(deviceId, payload) {
+function uploadPhoto(payload) {
   const v = parseUpload_(payload);
   const bytes = decodeJpeg_(v);
 
   const start = withLock_(function () {
-    return loadOwnedPhoto_(deviceId, v.inspectionId, v.photoId).rec;
+    return loadPhoto_(v.inspectionId, v.photoId).rec;
   });
   if (start.status === 'stored') {
     if (start.sha256 !== v.sha256) throw new GatewayError('CONFLICT', 'photoId sudah berisi foto lain');
@@ -94,7 +92,7 @@ function uploadPhoto(deviceId, payload) {
   const outcome = putToDrive_(start.drive_file_id, bytes, v.inspectionId + '_' + v.photoId + '.jpg');
 
   const stored = withLock_(function () {
-    const loaded = loadOwnedPhoto_(deviceId, v.inspectionId, v.photoId);
+    const loaded = loadPhoto_(v.inspectionId, v.photoId);
     const rec = loaded.rec;
     if (rec.status === 'stored' && rec.sha256 !== v.sha256) throw new GatewayError('CONFLICT', 'photoId sudah berisi foto lain');
     rec.status = 'stored';
@@ -108,12 +106,12 @@ function uploadPhoto(deviceId, payload) {
   return photoResult_(stored, outcome === 'existing');
 }
 
-function getPhoto(deviceId, payload) {
+function getPhoto(payload) {
   if (!isObject_(payload)) throw bad_('Payload harus objek');
   const inspectionId = requireUuid_(payload.inspectionId, 'inspectionId');
   const photoId = requireUuid_(payload.photoId, 'photoId');
   const rec = withLock_(function () {
-    return loadOwnedPhoto_(deviceId, inspectionId, photoId).rec;
+    return loadPhoto_(inspectionId, photoId).rec;
   });
   if (rec.status !== 'stored') throw new GatewayError('NOT_FOUND', 'Foto belum tersimpan');
   const bytes = DriveApp.getFileById(rec.drive_file_id).getBlob().getBytes();
@@ -218,12 +216,9 @@ function recordValues_(name, rec) {
   });
 }
 
-// Memuat foto sekaligus memastikan perangkat adalah pemilik inspeksinya. Harus dipanggil di dalam withLock_.
-function loadOwnedPhoto_(deviceId, inspectionId, photoId) {
-  const insp = sheet_('Inspections');
-  const inspRow = findRow_(insp, inspectionId);
-  if (!inspRow) throw new GatewayError('NOT_FOUND', 'Inspeksi tidak ditemukan');
-  if (readRecord_(insp, 'Inspections', inspRow).device_id !== deviceId) throw new GatewayError('FORBIDDEN', 'Bukan milik perangkat ini');
+// Memuat foto lewat PASANGAN (inspeksi, foto) yang harus berpasangan. Tanpa aktivasi (keputusan 2026-10-09), pasangan
+// ID acak 122 bit inilah satu-satunya penjaga akses baca/tulis ke data yang sudah ada. Panggil di dalam withLock_.
+function loadPhoto_(inspectionId, photoId) {
   const sh = sheet_('Photos');
   const row = findRow_(sh, photoId);
   const rec = row ? readRecord_(sh, 'Photos', row) : null;
@@ -297,10 +292,8 @@ function parseUpload_(p) {
 // ---- Diagnostik (dijalankan manual dari editor; tidak ada di allowlist doPost) ----
 
 // Menguji Drive + Sheets sungguhan lewat kode storage yang sama dengan jalur produksi, tanpa Vercel dan tanpa HMAC.
-// Meninggalkan 1 baris Inspections dan 1 baris Photos (perangkat uji sekali pakai) serta 1 file yang dibuang ke
-// tempat sampah. Pakai hanya di staging. Hasil tiap langkah ada di Execution log.
+// Meninggalkan 1 baris Inspections dan 1 baris Photos serta 1 file yang dibuang ke tempat sampah. Pakai hanya di staging. Hasil tiap langkah ada di Execution log.
 function adminSelfTest() {
-  const deviceId = Utilities.getUuid();
   const inspectionId = Utilities.getUuid();
   const photoId = Utilities.getUuid();
   const observedAt = new Date().toISOString();
@@ -325,17 +318,17 @@ function adminSelfTest() {
   }
 
   const prepared = step('prepareInspection: baris dibuat dan ID file Drive dicadangkan (generateIds)', function () {
-    return prepareInspection(deviceId, { inspectionId: inspectionId, inspectorName: inspectorName, note: note, observedAt: observedAt, photoIds: [photoId] });
+    return prepareInspection({ inspectionId: inspectionId, inspectorName: inspectorName, note: note, observedAt: observedAt, photoIds: [photoId] });
   });
   expect(prepared.photos[0].status === 'reserved', 'status foto seharusnya reserved');
 
   const first = step('uploadPhoto: file dibuat di Drive dengan ID cadangan', function () {
-    return uploadPhoto(deviceId, upload);
+    return uploadPhoto(upload);
   });
   expect(first.status === 'stored' && first.replayed === false, 'upload pertama seharusnya stored dan bukan replay');
 
   const second = step('uploadPhoto diulang: replay, tidak ada file kedua', function () {
-    return uploadPhoto(deviceId, upload);
+    return uploadPhoto(upload);
   });
   expect(second.status === 'stored' && second.replayed === true, 'upload kedua seharusnya replay');
 
@@ -343,11 +336,11 @@ function adminSelfTest() {
   // berhasil, atau respons hilang). Drive harus menolak create dengan ID yang sama, lalu kode memverifikasi isi file.
   step('pemulihan: baris dikembalikan ke reserved; upload ulang mengenali file yang sama (MD5) dan tidak membuat file kedua', function () {
     withLock_(function () {
-      const loaded = loadOwnedPhoto_(deviceId, inspectionId, photoId);
+      const loaded = loadPhoto_(inspectionId, photoId);
       loaded.rec.status = 'reserved';
       writeRow_(loaded.sheet, loaded.row, recordValues_('Photos', loaded.rec));
     });
-    const healed = uploadPhoto(deviceId, upload);
+    const healed = uploadPhoto(upload);
     expect(healed.status === 'stored' && healed.replayed === true, 'pemulihan seharusnya menandai stored lewat verifikasi file yang ada');
     const files = DriveApp.getFolderById(props_().getProperty('PHOTO_ROOT_FOLDER_ID')).getFilesByName(inspectionId + '_' + photoId + '.jpg');
     let count = 0;
@@ -359,7 +352,7 @@ function adminSelfTest() {
   });
 
   step('getPhoto: byte dibaca kembali dari Drive dan checksum cocok', function () {
-    const read = getPhoto(deviceId, { inspectionId: inspectionId, photoId: photoId });
+    const read = getPhoto({ inspectionId: inspectionId, photoId: photoId });
     expect(read.sha256 === sha256 && read.bytesBase64 === upload.bytesBase64, 'byte yang dibaca berbeda dari yang diunggah');
   });
 
@@ -375,7 +368,7 @@ function adminSelfTest() {
 
   try {
     const driveId = withLock_(function () {
-      return loadOwnedPhoto_(deviceId, inspectionId, photoId).rec.drive_file_id;
+      return loadPhoto_(inspectionId, photoId).rec.drive_file_id;
     });
     DriveApp.getFileById(driveId).setTrashed(true);
     console.log('LULUS  bersih-bersih: file uji dibuang ke tempat sampah');

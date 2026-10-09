@@ -6,12 +6,11 @@
 const SCHEMA_VERSION = 1;
 // Naikkan setiap perubahan perilaku gateway. Muncul di doGet agar kode lama yang belum di-deploy ulang (versi deployment
 // web app tidak ikut berubah saat kode di editor diganti) terlihat dari luar, tanpa rahasia.
-const GATEWAY_BUILD = '2026-10-08.1';
+const GATEWAY_BUILD = '2026-10-09.1';
 const MAX_CLOCK_SKEW_MS = 5 * 60 * 1000; // usulan; belum diukur di jaringan lapangan
 const REPLAY_TTL_SECONDS = 10 * 60; // > 2x skew agar pesan kedaluwarsa pun tidak bisa diputar ulang
 const MAX_REQUEST_CHARS = 4 * 1024 * 1024; // foto 2 MB -> base64 ~2,7 MB; sisanya margin
 const LOCK_WAIT_MS = 10 * 1000;
-const ACTIVATION_TTL_MS = 24 * 60 * 60 * 1000; // usulan; belum ditetapkan pengguna
 
 class GatewayError extends Error {
   constructor(code, message) {
@@ -70,104 +69,25 @@ function handle_(e) {
   if (cache.get('rq:' + m.requestId)) throw new GatewayError('REPLAY', 'requestId sudah dipakai');
   cache.put('rq:' + m.requestId, '1', REPLAY_TTL_SECONDS);
 
-  const entry = lookupAction_(m.action);
-  if (!entry) throw new GatewayError('VALIDATION_ERROR', 'Action tidak dikenal');
-  const deviceId = entry.needsDevice ? requireActiveDevice_(m.deviceId) : null;
-  return { ok: true, requestId: m.requestId, result: entry.fn(deviceId, m.payload) };
+  const handler = lookupAction_(m.action);
+  if (!handler) throw new GatewayError('VALIDATION_ERROR', 'Action tidak dikenal');
+  // Keputusan pengguna 2026-10-09: tanpa aktivasi perangkat. Tidak ada identitas pemanggil; pesan sudah dipastikan
+  // berasal dari server Next (HMAC), dan data lama hanya terjangkau lewat pasangan ID inspeksi + foto (UUID acak).
+  return { ok: true, requestId: m.requestId, result: handler(m.payload) };
 }
 
 // Allowlist action. Di dalam fungsi (bukan tabel top-level) agar tidak bergantung pada urutan load file.
 function lookupAction_(name) {
   switch (name) {
-    case 'activateDevice':
-      return { fn: activateDevice, needsDevice: false };
     case 'prepareInspection':
-      return { fn: prepareInspection, needsDevice: true };
+      return prepareInspection;
     case 'uploadPhoto':
-      return { fn: uploadPhoto, needsDevice: true };
+      return uploadPhoto;
     case 'getPhoto':
-      return { fn: getPhoto, needsDevice: true };
+      return getPhoto;
     default:
       return null;
   }
-}
-
-// ---- Perangkat: registri di Script Properties (cukup untuk pilot kecil; batas 500 KB total) ----
-// ponytail: tanpa batas laju percobaan aktivasi; kode 80 bit sekali pakai membuat tebakan tidak layak,
-// tetapi banjir percobaan tetap memakai kuota. Tambahkan penghitung gagal di CacheService bila perlu.
-
-function activateDevice(_deviceId, payload) {
-  const code = normalizeCode_(payload && payload.code);
-  if (code.length !== 20) throw new GatewayError('INVALID_ACTIVATION', 'Kode aktivasi tidak valid');
-  const key = 'act:' + sha256Hex_(code);
-  return withLock_(function () {
-    const props = props_();
-    const stored = props.getProperty(key);
-    if (!stored) throw new GatewayError('INVALID_ACTIVATION', 'Kode aktivasi tidak valid');
-    const activation = JSON.parse(stored);
-    props.deleteProperty(key); // sekali pakai: hapus sebelum membuat perangkat; gagal di tengah = admin menerbitkan kode baru
-    if (Date.now() > activation.expiresAt) throw new GatewayError('INVALID_ACTIVATION', 'Kode aktivasi tidak valid');
-    const deviceId = Utilities.getUuid();
-    props.setProperty('dev:' + deviceId, JSON.stringify({ name: activation.name, status: 'active', createdAt: new Date().toISOString() }));
-    return { deviceId: deviceId, deviceName: activation.name };
-  });
-}
-
-function requireActiveDevice_(deviceId) {
-  const stored = typeof deviceId === 'string' && UUID_RE.test(deviceId) ? props_().getProperty('dev:' + deviceId) : null;
-  if (!stored || JSON.parse(stored).status !== 'active') throw new GatewayError('DEVICE_INACTIVE', 'Perangkat tidak aktif');
-  return deviceId;
-}
-
-function normalizeCode_(value) {
-  return String(value || '').toUpperCase().replace(/[^0-9A-F]/g, '');
-}
-
-function newActivationCode_() {
-  // Utilities.getUuid() = UUID v4 acak. Nibble versi (indeks 12) dan varian (16) tetap, jadi dibuang;
-  // 20 hex dari sisanya = 80 bit. Asumsi: getUuid memakai sumber acak yang kuat (tidak didokumentasikan Google).
-  const u = Utilities.getUuid().replace(/-/g, '');
-  return (u.slice(0, 12) + u.slice(13, 16) + u.slice(17)).slice(0, 20).toUpperCase();
-}
-
-// ---- Fungsi admin: dijalankan manual dari editor Apps Script; tidak ada di allowlist doPost ----
-
-function adminCreateActivationCode(deviceName) {
-  // Tombol Run di editor tidak bisa memberi argumen: tanpa nama, label otomatis berisi waktu penerbitan (UTC).
-  const name = String(deviceName || 'Perangkat ' + new Date().toISOString().slice(0, 16) + 'Z').trim();
-  if (name.length < 1 || name.length > 60) throw new Error('Nama perangkat harus 1-60 karakter');
-  const code = newActivationCode_();
-  props_().setProperty('act:' + sha256Hex_(code), JSON.stringify({ name: name, expiresAt: Date.now() + ACTIVATION_TTL_MS }));
-  const shown = code.match(/.{5}/g).join('-');
-  console.log('Kode aktivasi "' + name + '" (sekali pakai, berlaku 24 jam): ' + shown);
-  return shown;
-}
-
-function adminListDevices() {
-  const props = props_();
-  const devices = props
-    .getKeys()
-    .filter(function (k) {
-      return k.indexOf('dev:') === 0;
-    })
-    .map(function (k) {
-      const d = JSON.parse(props.getProperty(k));
-      return { deviceId: k.slice(4), name: d.name, status: d.status, createdAt: d.createdAt };
-    });
-  devices.forEach(function (d) {
-    console.log(d.deviceId + '  ' + d.status + '  ' + d.name);
-  });
-  return devices;
-}
-
-function adminRevokeDevice(deviceId) {
-  const key = 'dev:' + deviceId;
-  const stored = props_().getProperty(key);
-  if (!stored) throw new Error('Perangkat tidak ditemukan');
-  const d = JSON.parse(stored);
-  d.status = 'revoked';
-  props_().setProperty(key, JSON.stringify(d));
-  console.log('Dicabut: ' + d.name);
 }
 
 // ---- Pembantu ----

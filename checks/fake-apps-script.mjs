@@ -198,9 +198,6 @@ export function createFakeAppsScript({ secret, spreadsheetId = 'sheet-test', roo
     run,
     doPost: (contents) => run('doPost')({ postData: { contents, type: 'text/plain' } }).getContent(),
     doGet: () => run('doGet')({}).getContent(),
-    createActivationCode: (name) => run('adminCreateActivationCode')(name),
-    revokeDevice: (id) => run('adminRevokeDevice')(id),
-    listDevices: () => run('adminListDevices')(),
   };
 }
 

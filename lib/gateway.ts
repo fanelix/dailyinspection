@@ -11,13 +11,13 @@ export class GatewayError extends Error {
   }
 }
 
-type GatewayAction = 'activateDevice' | 'prepareInspection' | 'uploadPhoto' | 'getPhoto';
+type GatewayAction = 'prepareInspection' | 'uploadPhoto' | 'getPhoto';
 
 export function signMessage(msg: string, secret: string): string {
   return createHmac('sha256', secret).update(msg, 'utf8').digest('hex');
 }
 
-export async function callGateway<T>(action: GatewayAction, deviceId: string | null, payload: unknown): Promise<T> {
+export async function callGateway<T>(action: GatewayAction, payload: unknown): Promise<T> {
   const url = process.env.GATEWAY_URL;
   const secret = process.env.GATEWAY_HMAC_SECRET;
   if (!url || !secret) throw new GatewayError('CONFIGURATION_ERROR', 'GATEWAY_URL / GATEWAY_HMAC_SECRET belum diatur');
@@ -25,7 +25,7 @@ export async function callGateway<T>(action: GatewayAction, deviceId: string | n
 
   // requestId dan ts baru pada setiap panggilan: pengulangan di level transport tidak boleh memakai ulang nonce
   // (akan ditolak REPLAY). Idempotensi bisnis ada pada ID inspeksi/foto di dalam payload, bukan pada requestId.
-  const msg = JSON.stringify({ v: 1, action, requestId: randomUUID(), ts: Date.now(), deviceId, payload });
+  const msg = JSON.stringify({ v: 1, action, requestId: randomUUID(), ts: Date.now(), payload });
   const body = JSON.stringify({ msg, sig: signMessage(msg, secret) });
 
   let status: number;
@@ -64,10 +64,6 @@ export async function callGateway<T>(action: GatewayAction, deviceId: string | n
 
 const HTTP_STATUS: Record<string, number> = {
   VALIDATION_ERROR: 400,
-  NO_SESSION: 401,
-  DEVICE_INACTIVE: 401,
-  INVALID_ACTIVATION: 401,
-  FORBIDDEN: 403,
   NOT_FOUND: 404,
   CONFLICT: 409,
   PAYLOAD_TOO_LARGE: 413,
@@ -77,7 +73,7 @@ const HTTP_STATUS: Record<string, number> = {
 };
 
 // Penolakan tingkat gateway (tanda tangan/nonce/konfigurasi) adalah kesalahan sisi server, bukan salah pengguna:
-// jangan dikirim ke browser sebagai 401 karena UI akan salah mengira sesi perangkat habis.
+// jangan diteruskan ke browser sebagai galat permintaan.
 const SERVER_FAULT = new Set(['UNAUTHORIZED', 'REPLAY', 'INTERNAL_ERROR', 'GATEWAY_BAD_RESPONSE', 'CONFIGURATION_ERROR']);
 
 export function errorResponse(err: unknown): Response {
