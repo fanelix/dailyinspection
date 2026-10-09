@@ -101,7 +101,7 @@ test('existing T1 headers expand additively; old rows remain unchanged; damaged 
   sheet.rows.splice(0,sheet.rows.length,oldHeader.slice(),oldRow.slice());
   fake.run('prepareInspection')(fixture());
   assert.deepEqual(sheet.rows[0].slice(0,8),oldHeader);
-  assert.deepEqual(sheet.rows[0].slice(8),['schema_version','template_version','area_id','checklist_json','sub_area']);
+  assert.deepEqual(sheet.rows[0].slice(8),['schema_version','template_version','area_id','checklist_json','sub_area','location_json']);
   assert.deepEqual(sheet.rows[1],oldRow);
   sheet.rows[0][2]='wrong_column';
   assert.throws(() => fake.run('prepareInspection')(fixture()), e=>e.code==='INTERNAL_ERROR');

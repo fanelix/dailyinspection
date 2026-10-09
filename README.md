@@ -22,7 +22,43 @@ Perlindungan yang masih ada: HMAC gateway, validasi payload, batas 2 MB dan 5 fo
 
 **Belum ada dan perlu keputusan pengguna:** batas laju atau kuota harian. Angkanya bergantung pada kapasitas yang belum ditetapkan (rencana §16), jadi tidak saya karang. Pengaman tanpa friksi yang bisa dipertimbangkan: aturan pembatasan laju di Vercel (Firewall; ingatan saya, belum diverifikasi), dan tidak menyebarkan URL. Alternatif ringan yang pernah ditawarkan dan ditolak: tautan aktivasi sekali ketuk, dan kode tim.
 
-## Status: implementasi dan uji fungsi T2 di preview (2026-10-09)
+## T3: lokasi objek dan GPS petugas (2026-10-09)
+
+Pengguna meminta melanjutkan tahap berikutnya dan mengabaikan pekerjaan izin foto. T3 dikerjakan pada `codex/t3-locations`, turunan dari T2 `9979a49`. T4–T7 belum dikerjakan. Rencana implementasi: [`docs/superpowers/plans/2026-10-09-t3-locations.md`](docs/superpowers/plans/2026-10-09-t3-locations.md).
+
+- Form memerlukan **konfirmasi lokasi objek**: GPS petugas yang dipilih secara eksplisit sebagai objek, pin peta yang dapat digeser, lokasi tersimpan, atau latitude/longitude manual. GPS diambil hanya saat tombol ditekan; izin ditolak/tidak tersedia/timeout tetap memungkinkan pilihan lain. Perubahan lokasi/area membatalkan konfirmasi. Respons GPS lama dibatalkan ketika pengguna mengedit pilihan atau mengganti area.
+- GPS petugas menyimpan latitude, longitude, akurasi meter dan waktu perangkat. Objek disimpan terpisah dengan metode dan waktu pemilihan. Pin/koordinat/lokasi tersimpan **tidak mewarisi akurasi GPS petugas**. Metadata sumber lokasi tersimpan ada di snapshotnya. Tidak ada batas akurasi wajib, konversi UTM/grid tambang, nilai RL, koordinat site, atau batas area yang dikarang.
+- Leaflet **1.9.4 stable** dimuat hanya di browser. Latar OpenStreetMap adalah konteks umum, memakai atribusi terlihat dan tile standar tanpa prefetch/offline. Belum ada layer batas site yang terverifikasi. Tampilan awal dunia tidak memiliki pin objek; angka nol tetap valid jika dipilih manual.
+- `location_json` ditambahkan **setelah `sub_area`**: skema staging `Inspections` 23 → 24 kolom (**X**); skema sederhana 13 → 14. Header/baris lama dipertahankan. Lokasi berversi 1 memakai `EPSG:4326`. SHA-256 lokasi dikonfirmasi sebelum UI memberi sukses; perubahan lokasi dengan ID inspeksi sama ditolak. Retry T2 tanpa lokasi tetap valid dan tidak menulis ulang baris lama.
+- Frontend T3 memakai action **`prepareLocatedInspection`**. Gateway T2 menolak action ini sebelum menulis, sehingga rollout yang belum lengkap tidak menghasilkan catatan T3 tanpa lokasi. Action `prepareInspection` tetap melayani T2.
+- Tautan **Unduh titik objek (GeoJSON)** mengekspor titik yang dikonfirmasi pada form dengan urutan **[longitude, latitude]**. Ini bukan ekspor riwayat inspeksi T6 dan bukan bukti titik sudah tersimpan server.
+
+### Lokasi tersimpan memakai tab yang sudah ada
+
+Header asli `Locations` (15 kolom) dan tabel pendukung telah dibaca langsung; seluruh tabel master tersebut masih berisi header saja saat audit. Daftar kosong tidak diisi koordinat contoh. API `/api/locations?areaId=…` membaca tanpa membuat atau mengubah tab. Pengelolaan master untuk T3 dapat dilakukan admin di Sheet; UI admin bukan bagian task ini.
+
+| Kolom / tabel | Aturan pembacaan T3 |
+| --- | --- |
+| `Areas` | `area_id` asli, `name` cocok salah satu tujuh nama area (abaikan besar/kecil huruf), `active` bernilai true/1 |
+| `Locations.entity_type` | `area`, `observation_object`, atau `photo_point` |
+| `Locations.entity_id` | Cocok `Areas.area_id`, `ObservationObjects.object_id`, atau `PhotoPoints.photo_point_id`; objek/titik mempunyai `area_id` yang cocok Areas |
+| Nama pilihan | `Areas.name` untuk area; `label` objek/titik untuk jenis lainnya |
+| `location_id`, `revision` | ID unik, revisi bilangan bulat positif; revisi dipakai dalam snapshot |
+| `latitude`, `longitude`, `source_crs` | Angka WGS84 dalam rentang; CRS eksplisit `EPSG:4326` atau `WGS84` |
+| `source`, `accuracy_m`, `captured_at` | Sumber wajib; akurasi kosong → null; waktu kosong → null, bila diisi gunakan ISO UTC `YYYY-MM-DDTHH:mm:ss.sssZ` |
+
+Kolom proyeksi (`source_x/y`) dan layer tetap dipertahankan, tidak ditransformasikan. Header/relasi/koordinat tidak valid ditolak. Master diperiksa lagi pada penyimpanan pertama; perubahan setelah catatan tersimpan tidak mengubah snapshot maupun retry historis.
+
+### Memperbarui Apps Script untuk T3
+
+1. Pakai proyek dan `SPREADSHEET_ID` staging yang sama. Salin **lima** file dari `apps-script/src`: `gateway.js`, `storage.js`, `checklist.js`, **`location.js`**, **`locations.js`** ke editor (nama tanpa `.js`). `location.js` dihasilkan `npm run sync:location`; `checklist.js` dihasilkan `npm run sync:checklist`.
+2. Script Properties dan manifest tidak perlu diganti. **Deploy → Manage deployments → Edit → New version → Deploy** pada deployment yang sama. Mengganti isi editor saja tidak memperbarui web app. Build health `doGet` yang diharapkan: **`2026-10-09.5`**, schema checklist tetap 2.
+3. Gunakan preview branch T3. Uji nama/sub-area manual, titik sintetis, konfirmasi, kirim, retry; periksa `Inspections!X` dan checksum acknowledgment. Master nyata hanya diisi dengan koordinat terverifikasi milik site.
+4. Di Android nyata, uji izin GPS ditolak, timeout/tidak tersedia, lalu koordinat manual; uji GPS petugas dan pin objek berbeda. Pengujian GPS/perizinan perangkat belum terbukti oleh pemeriksaan Node.
+
+**Bukti lokal T3:** baseline T2 22/22 lulus; `npm run check` T3 31/31 lulus (termasuk typecheck Next/Apps Script dan drift generator), `npm run build` lulus. Pengujian lokasi mencakup pin/GPS terpisah, batas WGS84/blank vs nol, akurasi pin null, checksum/retry/konflik, migrasi T2, master snapshot dan GeoJSON. Runtime tiruan tidak membuktikan penulisan Google nyata. Uji preview dan versi Apps Script nyata dicatat setelah diamati.
+
+## Status historis: implementasi dan uji fungsi T2 di preview (2026-10-09)
 
 Satu inspeksi + satu foto: simpan metadata (Sheets) → unggah foto (Drive) → baca kembali, dengan retry memakai reservasi yang sama.
 
@@ -34,7 +70,7 @@ Satu inspeksi + satu foto: simpan metadata (Sheets) → unggah foto (Drive) → 
 
 Kompresi foto (orientasi, batas ukuran) **ditarik maju dari T4 atas keputusan pengguna**, agar uji Android memakai foto kamera asli. `docs/plan.md` tetap salinan apa adanya, jadi urutan task di sana belum diperbarui.
 
-Belum ada (task berikutnya): lokasi/peta (T3), finalisasi (T4), draft offline (T5), riwayat/review/ekspor (T6).
+Belum ada setelah T3: finalisasi (T4), draft offline (T5), riwayat/review/ekspor (T6).
 
 ## T2: checklist usulan dan penyimpanan
 

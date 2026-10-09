@@ -11,7 +11,7 @@ export class GatewayError extends Error {
   }
 }
 
-type GatewayAction = 'prepareInspection' | 'uploadPhoto' | 'getPhoto';
+type GatewayAction = 'prepareInspection' | 'prepareLocatedInspection' | 'uploadPhoto' | 'getPhoto' | 'listLocations';
 
 export function signMessage(msg: string, secret: string): string {
   return createHmac('sha256', secret).update(msg, 'utf8').digest('hex');

@@ -5,7 +5,7 @@
 // Lock hanya membungkus operasi Sheets singkat, tidak pernah transfer byte.
 
 const SHEET_COLUMNS = {
-  Inspections: ['inspection_id', 'device_id', 'inspector_name', 'observed_at', 'received_at', 'note', 'status', 'version', 'schema_version', 'template_version', 'area_id', 'checklist_json', 'sub_area'],
+  Inspections: ['inspection_id', 'device_id', 'inspector_name', 'observed_at', 'received_at', 'note', 'status', 'version', 'schema_version', 'template_version', 'area_id', 'checklist_json', 'sub_area', 'location_json'],
   Photos: ['photo_id', 'inspection_id', 'drive_file_id', 'status', 'size', 'mime', 'sha256', 'reserved_at', 'stored_at'],
 };
 // Known headers verified in the existing staging DB. Keep these columns and old rows in place.
@@ -21,6 +21,11 @@ const MAX_PHOTO_BYTES = 2 * 1024 * 1024; // sama dengan lib/photos.ts; usulan re
 const MAX_PHOTOS_PER_INSPECTION = 5; // usulan rencana §8
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
+function prepareLocatedInspection(payload) {
+  if (!isObject_(payload) || payload.location == null) throw bad_('Lokasi objek wajib dikonfirmasi');
+  return prepareInspection(payload);
+}
+
 function prepareInspection(payload) {
   const v = parsePrepare_(payload);
   return withLock_(function () {
@@ -31,9 +36,16 @@ function prepareInspection(payload) {
     const inspRow = findRow_(insp, v.inspectionId);
     let rec = inspRow ? readRecord_(insp, 'Inspections', inspRow) : null;
     if (rec) {
-      if (rec.inspector_name !== v.inspectorName || rec.note !== v.note || rec.observed_at !== v.observedAt || rec.checklist_json !== v.checklistJson) {
+      if (rec.inspector_name !== v.inspectorName || rec.note !== v.note || rec.observed_at !== v.observedAt || rec.checklist_json !== v.checklistJson || rec.location_json !== v.locationJson) {
         throw new GatewayError('CONFLICT', 'ID inspeksi sudah dipakai dengan isi berbeda');
       }
+    }
+
+    // Resolve masters only on first save: retries preserve the historical snapshot even after master edits.
+    const selected = v.location && v.location.object.savedLocation;
+    if (!rec && selected) {
+      const current = listLocations({ areaId: v.checklist.areaId }).locations.find(function (l) { return l.id === selected.id; });
+      if (!current || JSON.stringify(current) !== JSON.stringify(selected)) throw new GatewayError('CONFLICT', 'Lokasi tersimpan berubah; muat ulang daftar dan pilih kembali');
     }
 
     // Rencanakan foto lebih dulu (tanpa menulis apa pun) agar penolakan tidak meninggalkan setengah data.
@@ -65,6 +77,7 @@ function prepareInspection(payload) {
         area_id: v.checklist.areaId,
         checklist_json: v.checklistJson,
         sub_area: v.checklist.subArea || '',
+        location_json: v.locationJson,
         identity_verification: 'unverified', // manual names are not authenticated identities
         submission_verification: 'unverified',
         updated_at: now,
@@ -91,6 +104,7 @@ function prepareInspection(payload) {
       templateVersion: v.checklist.templateVersion,
       subArea: rec.sub_area || null,
       checklistSha256: sha256Hex_(rec.checklist_json),
+      locationSha256: rec.location_json ? sha256Hex_(rec.location_json) : null,
       reviewRequired: v.checklist.reviewRequired,
       photos: v.photoIds.map(function (photoId) {
         return { photoId: photoId, status: statuses[photoId] };
@@ -200,7 +214,7 @@ function sheetLayout_(sh, name) {
   const staging = base.every(function (value, i) { return actual[i] === value; });
   const fields = SHEET_COLUMNS[name].map(function (c) { return staging ? STAGING_FIELD_NAMES[name][c] || c : c; });
   const columns = staging ? base.concat(fields.filter(function (c) { return base.indexOf(c) < 0; })) : SHEET_COLUMNS[name];
-  const lengths = staging ? [base.length, columns.length] : name === 'Inspections' ? [8, 12, 13] : [9];
+  const lengths = staging ? (name === 'Inspections' ? [17, 22, 23, 24] : [10, 14]) : name === 'Inspections' ? [8, 12, 13, 14] : [9];
   if (lengths.indexOf(actual.length) < 0 || !actual.every(function (value, i) { return value === columns[i]; })) {
     throw new GatewayError('INTERNAL_ERROR', 'Header ' + name + ' tidak sesuai; periksa struktur tab sebelum menulis');
   }
@@ -317,8 +331,10 @@ function parsePrepare_(p) {
   if (new Set(photoIds).size !== photoIds.length) throw bad_('photoIds tidak boleh ganda');
   let checklist;
   try { checklist = parseChecklist(p); } catch (err) { throw bad_(err.message); }
+  let location;
+  try { location = parseLocation(p.location, checklist.areaId); } catch (err) { throw bad_(err.message); }
   return { inspectionId: inspectionId, inspectorName: inspectorName, note: note, observedAt: observedAt, photoIds: photoIds,
-    checklist: checklist, checklistJson: JSON.stringify(checklist) };
+    checklist: checklist, checklistJson: JSON.stringify(checklist), location: location, locationJson: location ? JSON.stringify(location) : '' };
 }
 
 function parseUpload_(p) {

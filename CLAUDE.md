@@ -4,9 +4,9 @@
 
 Rencana: `docs/plan.md` (v1.1). Kerjakan hanya task yang ditunjuk (T0–T7, §13). Jangan lanjut ke task berikutnya bila acceptance criteria belum terpenuhi.
 
-Baca `docs/handoff.md` lebih dulu: konteks sesi sebelumnya (keputusan, jebakan, apa yang terbukti, cara memulai T2). T0/T1 ada di branch `claude/eager-carson-bqb25q`; perubahan T2 ada di `codex/t2-checklists` (turunan dari `50318a7`). Branch staging tidak diubah; `main` masih kosong.
+Baca `docs/handoff.md` lebih dulu. T0/T1 ada di `claude/eager-carson-bqb25q`; T2 di `codex/t2-checklists`; T3 di `codex/t3-locations` (turunan T2 `9979a49`). Branch staging tidak diubah; `main` masih kosong.
 
-Status: T0/T1 selesai; implementasi T2 dan uji fungsi preview terhadap database asli berjalan (lihat README). Izin foto uji Drive terdeteksi `anyone/writer` dan perlu diperiksa; jangan menyatakan foto sumber privat. PR #1 masih draft, Production masih T1. Checklist T2 adalah usulan untuk review engineer, bukan final. Keputusan 9 Oktober: tujuh area sesuai `config/checklists.json`; nama petugas diketik manual, tanpa daftar inspector. Sub-area/detail lokasi adalah teks manual opsional untuk setiap area. Gunakan database staging pengguna yang sudah ada; `storage.js` memetakan header 17/10 kolom secara additif (lihat README). Jangan mengerjakan T3–T7 tanpa diminta.
+Status: T2 diuji terhadap Google asli; pengguna meminta tahap berikutnya (T3) dan mengabaikan pekerjaan izin foto. Jangan mengubah izin foto atau menyebut sumber privat tanpa bukti. T3 mengimplementasikan lokasi objek terpisah dari GPS, master read-only, konfirmasi dan GeoJSON titik; Google nyata memerlukan deployment gateway build `2026-10-09.5`. PR T2 masih draft, Production masih T1 pada observasi terakhir. Checklist tetap usulan; tujuh area sesuai config, nama/sub-area manual. Gunakan database staging yang ada; tambahkan `location_json` setelah `sub_area`, jangan mengganti header/baris lama. Jangan mengerjakan T4–T7 tanpa diminta.
 
 Perintah (sudah dijalankan nyata):
 
@@ -19,6 +19,7 @@ Catatan kerja:
 - Kode `apps-script/` tidak bisa dijalankan lokal. `checks/fake-apps-script.mjs` hanya meniru; lulus di sana bukan bukti Drive/Sheets/Apps Script sungguhan benar. Bukti nyata = `checks/live.mjs` di staging.
 - Jangan menyatakan upload berhasil sebelum server mengonfirmasi data dan foto (status `stored` + checksum sama).
 - Setelah mengubah `config/checklists.json` atau `lib/inspection.ts`, jalankan `npm run sync:checklist`; `apps-script/src/checklist.js` adalah keluaran otomatis dan harus ikut deployment. Naikkan versi template bila maknanya berubah.
+- Setelah mengubah `lib/location.ts`, jalankan `npm run sync:location`; deploy kelima file Apps Script sesuai README. Action T3 `prepareLocatedInspection` memastikan gateway lama menolak sebelum write; retry T2 tetap memakai `prepareInspection`. Jangan memberi sukses sebelum checksum lokasi cocok.
 - Jangan mengarang ambang geoteknik, checklist final, koordinat, folder ID, atau hasil uji. Angka usulan diberi komentar "usulan" di kode.
 - Rahasia hanya di environment server dan Script Properties; tidak di git atau `NEXT_PUBLIC_*`.
 - Akses: **tanpa aktivasi perangkat** atas keputusan pengguna 2026-10-09 (menyimpang dari `docs/plan.md` §3/§10/§14; lihat README, bagian "Keputusan akses"). Jangan memulihkan login/aktivasi atau menambah gerbang akses tanpa diminta; foto hanya terjaga oleh pasangan ID inspeksi+foto, jadi jangan menampilkan atau mencatat ID itu. Batas laju belum ada dan menunggu keputusan pengguna.

@@ -78,3 +78,9 @@ legend { font-weight: 700; padding: 0 6px; }
 .choice input { width: 22px; min-width: 22px; min-height: 22px; height: 22px; margin: 0; }
 .finding { margin-top: 12px; border-top: 1px solid #cad6d0; }
 input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-visible { outline: 3px solid #73ae91; outline-offset: 2px; }
+.location-map { height: 320px; width: 100%; margin-top: 20px; border: 1px solid var(--border); border-radius: 8px; z-index: 0; }
+.location-map img { margin-top: 0; border-radius: 0; }
+.object-pin { background: #ad4400; color: white; border: 2px solid white; border-radius: 50% 50% 50% 0; font: bold 20px/28px system-ui; text-align: center; box-sizing: border-box; }
+.coordinate-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.coordinate-fields label { font-size: 0.875rem; }
+@media (max-width: 420px) { .coordinate-fields { grid-template-columns: 1fr; } }

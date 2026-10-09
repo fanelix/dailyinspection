@@ -31,7 +31,7 @@ test('existing staging columns are reused; T2 fields append without changing eit
   const {fake,insp,photo}=staging(), payload=body();
   const oldInspections=structuredClone(insp.rows.slice(1)), oldPhotos=structuredClone(photo.rows.slice(1));
   const first=fake.run('prepareInspection')(payload);
-  assert.deepEqual(insp.rows[0], [...inspections,'device_id','observed_at','note','schema_version','checklist_json','sub_area']);
+  assert.deepEqual(insp.rows[0], [...inspections,'device_id','observed_at','note','schema_version','checklist_json','sub_area','location_json']);
   assert.deepEqual(photo.rows[0], [...photos,'size','mime','reserved_at','stored_at']);
   assert.deepEqual(insp.rows.slice(1,3),oldInspections);
   assert.deepEqual(photo.rows.slice(1,3),oldPhotos);

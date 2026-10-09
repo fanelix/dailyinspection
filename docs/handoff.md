@@ -1,8 +1,19 @@
-# Serah terima sesi — 2026-10-09 (uji fungsi T2 di preview; izin Drive perlu diperiksa)
+# Serah terima sesi — 2026-10-09 (T3 lokasi objek)
 
 Dokumen ini untuk sesi baru. Baca bersama `AGENTS.md`, `CLAUDE.md`, `docs/plan.md` (v1.1, salinan apa adanya, tidak diubah) dan `README.md` (runbook staging, keputusan akses, daftar yang belum terbukti). Tidak ada rahasia, URL gateway, atau domain Vercel di sini; tanyakan ke pengguna bila perlu.
 
-## Pembaruan T2 — keputusan dan hasil terbaru
+## Pembaruan T3 — mengungguli instruksi scope historis T2
+
+Pengguna: **“Abaikan izin fotonya, kerjakan selanjutnya”**. Lanjut T3 saja; izin foto tidak diubah, T4–T7 belum diminta. Branch `codex/t3-locations` dibuat dalam worktree terpisah dari T2 `9979a49`; branch T2/Production tidak diubah. Rencana: `docs/superpowers/plans/2026-10-09-t3-locations.md`.
+
+- Lokasi objek wajib dikonfirmasi pada UI; GPS petugas terpisah, GPS hanya saat diminta, fallback manual/pin/lokasi tersimpan. Pin/koordinat manual tidak memiliki akurasi GPS. WGS84 eksplisit, tanpa CRS transform/RL/batas site karangan. Leaflet stable 1.9.4 dan OSM beratribusi; no offline tiles.
+- `lib/location.ts` dibagi browser/gateway lewat generator `scripts/sync-location.mjs` → `apps-script/src/location.js`. Lokasi version 1 tidak mengubah checklist schema 2/template. Checksum lokasi wajib cocok sebelum sukses.
+- `Inspections.location_json` di **X** skema asli (23→24), ditambahkan di kanan; header/record lama dan retry T2 dipertahankan. Action baru `prepareLocatedInspection` menolak pada gateway lama sebelum menulis; action lama tetap valid untuk T2.
+- Header asli Locations 15 kolom diverifikasi; Areas/ObservationObjects/PhotoPoints/Locations masih header-only. `locations.js` membaca saja, join entity types `area`/`observation_object`/`photo_point`; nama area cocok tujuh label config. Kontrak pengisian admin ada README. Tidak membuat data master/koordinat contoh. Master diperiksa saat save pertama, snapshot historis dipertahankan saat retry.
+- GeoJSON titik form memakai [longitude, latitude]; ekspor riwayat tetap T6. GPS asli/izin Android dan persistensi lokasi Google belum terbukti oleh runtime palsu.
+- Baseline T2 22/22, check T3 31/31 dan build produksi lulus. Review menemukan tombol refresh master yang sudah diperbaiki dan diperiksa ulang; tidak ada temuan material tersisa. Uji preview masih berlangsung. Deployment gateway memerlukan **lima** file `gateway`, `storage`, `checklist`, `location`, `locations` dan **New version**, build `2026-10-09.5`; properties/manifest/Spreadsheet ID tetap.
+
+## Pembaruan T2 — catatan historis
 
 Bagian ini mengungguli catatan historis T1 di bawah. Permintaan pengguna: **hanya T2**; area **Pit, Waste Dump, LGSP, Topsoil Stockpile, Sedimen Sump, DAM, Heap Leach**; checklist diminta sebagai **usulan**; nama petugas **diketik manual**, tidak perlu daftar dua nama. Revisi pengguna: setiap area mempunyai **sub-area/detail lokasi yang diisi manual**; kolom dibuat opsional. Keputusan berikutnya: **gunakan Geotech Inspection Staging DB yang sudah ada**, sesuaikan script, bukan mengganti database.
 
