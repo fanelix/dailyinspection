@@ -22,9 +22,13 @@ Perlindungan yang masih ada: HMAC gateway, validasi payload, batas 2 MB dan 5 fo
 
 **Belum ada dan perlu keputusan pengguna:** batas laju atau kuota harian. Angkanya bergantung pada kapasitas yang belum ditetapkan (rencana §16), jadi tidak saya karang. Pengaman tanpa friksi yang bisa dipertimbangkan: aturan pembatasan laju di Vercel (Firewall; ingatan saya, belum diverifikasi), dan tidak menyebarkan URL. Alternatif ringan yang pernah ditawarkan dan ditolak: tautan aktivasi sekali ketuk, dan kode tim.
 
-## Status: T1 — bukti integrasi (belum terbukti di Vercel dan Android)
+## Status: T1 — terbukti di Vercel dan Google; menunggu uji foto besar dan Android
 
-Satu inspeksi + satu foto privat: simpan metadata (Sheets) → unggah foto (Drive) → baca kembali, dengan retry yang tidak menggandakan file. Ada kode, pemeriksaan lokal, dan skrip pembuktian staging. **Acceptance T1 baru terpenuhi setelah `checks/live.mjs` tahap B lulus di staging dan uji Android dilakukan.**
+Satu inspeksi + satu foto privat: simpan metadata (Sheets) → unggah foto (Drive) → baca kembali, dengan retry yang tidak menggandakan file.
+
+**Terbukti 2026-10-09 di staging pengguna** (Vercel + Apps Script + Drive + Sheets sungguhan): gateway menolak pesan tanpa tanda tangan (Tahap A, build `2026-10-09.1`); `adminSelfTest` lulus; alur penuh lewat Vercel dari browser (`checks/live-browser.js`, 14 pemeriksaan otomatis lulus, termasuk upload yang diputus klien lalu diulang → `replayed=true` tanpa file kedua); dan pemeriksaan manual pengguna di Drive dan Sheets lulus (satu file, baris `stored`, catatan `=…` tetap teks, foto tidak terbuka tanpa izin).
+
+**Acceptance T1 baru terpenuhi setelah uji Android** (kamera dan galeri) dilakukan. Foto uji otomatis hanya 800 byte, jadi jalur foto sungguhan (hingga 2 MB, ±2,7 MB base64 ke `doPost`) dan waktu unggahnya belum teruji di Google.
 
 Kompresi foto (orientasi, batas ukuran) **ditarik maju dari T4 atas keputusan pengguna**, agar uji Android memakai foto kamera asli. `docs/plan.md` tetap salinan apa adanya, jadi urutan task di sana belum diperbarui.
 
@@ -92,7 +96,8 @@ Gunakan folder Drive dan Spreadsheet **staging** yang terpisah dari produksi.
 - **Terbukti di Google sungguhan** (staging pengguna, 2026-10-08): akses deployment "Anyone" dari luar jaringan, HMAC dan redirect `doPost`, `Drive.Files.generateIds` + `create` dengan ID cadangan, penolakan `create` untuk ID ganda lalu verifikasi MD5 (tepat satu file), pembacaan kembali dari Drive.
 - **Sheets, diukur**: format `@` saja menahan konversi tanggal/angka tetapi **tidak** mencegah teks berawalan `=` menjadi rumus (injeksi rumus lewat nama/catatan). `writeRow_` memakai `@` + apostrof di depan setiap nilai tidak kosong; semua 13 nilai uji kembali apa adanya, dan `adminSelfTest` penuh lulus di Sheets sungguhan (termasuk teks `=…`, nama berawalan apostrof, dan sel kosong yang dibiarkan kosong).
 - **Versi gateway**: `doGet` menyebut `build`. Setelah penghapusan aktivasi, build berubah menjadi `2026-10-09.1`; deployment yang masih menampilkan `2026-10-08.1` atau kosong masih memakai kode dengan aktivasi.
-- **Belum teruji di Google sungguhan**: body POST ±2,7 MB ke `doPost`, latensi/cold start, seluruh jalur Vercel (route dan `checks/live.mjs` tahap B) dan Android. Kode tanpa aktivasi baru teruji di runtime Apps Script palsu, Chromium headless (UI dan kompresi), dan `live.mjs` terhadap `next start` lokal.
+- **Terbukti lewat Vercel dan Google sungguhan** (2026-10-09): jalur aplikasi → gateway → Drive/Sheets dengan foto kecil, termasuk respons hilang lalu diulang, baca kembali dengan bytes identik, dan pasangan ID. Uji lain (UI, kompresi, orientasi) baru dijalankan di Chromium headless terhadap `next start` lokal dan gateway tiruan.
+- **Belum teruji**: foto sungguhan besar (hingga 2 MB, ±2,7 MB base64 ke `doPost`) lewat Vercel dan Apps Script beserta waktu unggahnya (batas body Vercel dan kuota Apps Script belum dialami), serta Android (kamera, galeri, kompresi di HP, foto resolusi sangat tinggi, HEIC). Latensi upload sungguhan belum diukur; upload foto kecil sudah melampaui batas klien 1,5 dtk pada uji respons-hilang.
 - Scope `drive` (luas) dipakai karena folder induk bukan dibuat oleh aplikasi sehingga `drive.file` tidak cukup.
 - Nilai usulan, belum ditetapkan pengguna atau diukur: toleransi jam 5 menit, TTL replay 10 menit, timeout gateway 30 dtk, `maxDuration` 60 dtk, 3 percobaan ulang (jeda 1 dtk, 2 dtk), foto JPEG ≤ 2 MB dan ≤ 5 per inspeksi, sisi panjang 2048 px, kualitas awal 0,8 (rencana §8).
 - Kompresi: kualitas turun 0,8 → 0,7 → 0,6 dan penjaga sumber 32 MB adalah **usulan** (lantai kualitas belum ditetapkan). Foto yang tetap > 2 MB ditolak dengan pesan, tidak diunggah diam-diam; dengan foto nyata cabang ini praktis tidak tercapai (derau seragam 2048×2048, kasus terburuk yang dicoba, berakhir 1,91 MiB).
