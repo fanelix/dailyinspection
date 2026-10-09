@@ -8,6 +8,15 @@ const SHEET_COLUMNS = {
   Inspections: ['inspection_id', 'device_id', 'inspector_name', 'observed_at', 'received_at', 'note', 'status', 'version', 'schema_version', 'template_version', 'area_id', 'checklist_json', 'sub_area'],
   Photos: ['photo_id', 'inspection_id', 'drive_file_id', 'status', 'size', 'mime', 'sha256', 'reserved_at', 'stored_at'],
 };
+// Known headers verified in the existing staging DB. Keep these columns and old rows in place.
+const STAGING_COLUMNS = {
+  Inspections: ['inspection_id', 'revision', 'operation_id', 'operational_date', 'shift', 'area_id', 'reporter_name', 'unit_company', 'identity_verification', 'template_id', 'template_version', 'workflow_status', 'submission_verification', 'owner_public_session_id', 'actor_id', 'created_at', 'updated_at'],
+  Photos: ['photo_id', 'inspection_id', 'revision', 'item_id', 'finding_id', 'photo_point_id', 'drive_file_id', 'thumbnail_file_id', 'checksum', 'status'],
+};
+const STAGING_FIELD_NAMES = {
+  Inspections: { inspector_name: 'reporter_name', received_at: 'created_at', status: 'workflow_status', version: 'revision' },
+  Photos: { sha256: 'checksum' },
+};
 const MAX_PHOTO_BYTES = 2 * 1024 * 1024; // sama dengan lib/photos.ts; usulan rencana §8, belum diuji dengan foto nyata
 const MAX_PHOTOS_PER_INSPECTION = 5; // usulan rencana §8
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -34,7 +43,7 @@ function prepareInspection(payload) {
       const row = findRow_(photos, photoId);
       if (!row) return missing.push(photoId);
       const existing = readRecord_(photos, 'Photos', row);
-      if (existing.inspection_id !== v.inspectionId) throw new GatewayError('CONFLICT', 'photoId sudah dipakai inspeksi lain');
+      if (existing.inspection_id !== v.inspectionId || !existing.reserved_at) throw new GatewayError('CONFLICT', 'photoId sudah dipakai atau bukan reservasi gateway ini');
       statuses[photoId] = existing.status;
     });
     if (countPhotosOf_(photos, v.inspectionId) + missing.length > MAX_PHOTOS_PER_INSPECTION) {
@@ -56,8 +65,11 @@ function prepareInspection(payload) {
         area_id: v.checklist.areaId,
         checklist_json: v.checklistJson,
         sub_area: v.checklist.subArea || '',
+        identity_verification: 'unverified', // manual names are not authenticated identities
+        submission_verification: 'unverified',
+        updated_at: now,
       };
-      writeRow_(insp, insp.getLastRow() + 1, recordValues_('Inspections', rec));
+      writeRow_(insp, insp.getLastRow() + 1, recordValues_(insp, 'Inspections', rec));
     }
 
     if (missing.length) {
@@ -65,8 +77,8 @@ function prepareInspection(payload) {
       if (!ids || ids.length !== missing.length) throw new GatewayError('RETRYABLE_ERROR', 'Reservasi ID Drive gagal');
       // ID cadangan yang tidak terpakai (mis. Sheets gagal setelah ini) boleh yatim; tidak berbahaya.
       missing.forEach(function (photoId, i) {
-        const photo = { photo_id: photoId, inspection_id: v.inspectionId, drive_file_id: ids[i], status: 'reserved', reserved_at: now };
-        writeRow_(photos, photos.getLastRow() + 1, recordValues_('Photos', photo));
+        const photo = { photo_id: photoId, inspection_id: v.inspectionId, revision: rec.version, drive_file_id: ids[i], status: 'reserved', reserved_at: now };
+        writeRow_(photos, photos.getLastRow() + 1, recordValues_(photos, 'Photos', photo));
         statuses[photoId] = 'reserved';
       });
     }
@@ -110,7 +122,7 @@ function uploadPhoto(payload) {
     rec.mime = 'image/jpeg';
     rec.sha256 = v.sha256;
     rec.stored_at = rec.stored_at || new Date().toISOString();
-    writeRow_(loaded.sheet, loaded.row, recordValues_('Photos', rec));
+    writeRow_(loaded.sheet, loaded.row, recordValues_(loaded.sheet, 'Photos', rec));
     return rec;
   });
   return photoResult_(stored, outcome === 'existing');
@@ -172,26 +184,31 @@ function sheet_(name) {
   if (!sh) {
     sh = ss.insertSheet(name);
     writeRow_(sh, 1, SHEET_COLUMNS[name]);
-  } else {
-    const expected = SHEET_COLUMNS[name];
-    const actual = sh.getRange(1, 1, 1, expected.length).getValues()[0];
-    // Only append to known T1 (8 columns) / initial T2 (12 columns) headers.
-    const legacyLengths = name === 'Inspections' ? [8, 12] : [];
-    if (actual.every(function (value, i) { return value === expected[i]; })) return sh;
-    if (legacyLengths.some(function (length) {
-      return actual.slice(0, length).every(function (value, i) { return value === expected[i]; }) &&
-        actual.slice(length).every(function (value) { return value === ''; });
-    })) {
-      writeRow_(sh, 1, expected); // additive header migration; existing data rows are untouched
-    } else {
-      throw new GatewayError('INTERNAL_ERROR', 'Header ' + name + ' tidak sesuai; periksa struktur tab sebelum menulis');
-    }
+  }
+  const layout = sheetLayout_(sh, name);
+  if (layout.actualLength < layout.columns.length) {
+    // Only write missing header cells at the right; never rewrite old headers or data rows.
+    writeRow_(sh, 1, layout.columns.slice(layout.actualLength), layout.actualLength + 1);
   }
   return sh;
 }
 
-function writeRow_(sh, row, values) {
-  const range = sh.getRange(row, 1, 1, values.length);
+function sheetLayout_(sh, name) {
+  const actual = sh.getRange(1, 1, 1, Math.max(1, sh.getLastColumn())).getValues()[0];
+  while (actual.length && actual[actual.length - 1] === '') actual.pop();
+  const base = STAGING_COLUMNS[name];
+  const staging = base.every(function (value, i) { return actual[i] === value; });
+  const fields = SHEET_COLUMNS[name].map(function (c) { return staging ? STAGING_FIELD_NAMES[name][c] || c : c; });
+  const columns = staging ? base.concat(fields.filter(function (c) { return base.indexOf(c) < 0; })) : SHEET_COLUMNS[name];
+  const lengths = staging ? [base.length, columns.length] : name === 'Inspections' ? [8, 12, 13] : [9];
+  if (lengths.indexOf(actual.length) < 0 || !actual.every(function (value, i) { return value === columns[i]; })) {
+    throw new GatewayError('INTERNAL_ERROR', 'Header ' + name + ' tidak sesuai; periksa struktur tab sebelum menulis');
+  }
+  return { columns: columns, fields: fields, actualLength: actual.length };
+}
+
+function writeRow_(sh, row, values, column = 1) {
+  const range = sh.getRange(row, column, 1, values.length);
   // Diukur di Sheets sungguhan (probe 2026-10-08): format '@' saja menahan konversi tanggal/angka tetapi TIDAK menahan
   // "=..." menjadi rumus (nama/catatan petugas berawalan "=" = injeksi rumus). Format '@' + apostrof di depan menyimpan
   // semua nilai uji apa adanya; apostrofnya tidak ikut tersimpan sebagai isi. Sel kosong dibiarkan kosong.
@@ -225,18 +242,22 @@ function countPhotosOf_(photosSheet, inspectionId) {
 }
 
 function readRecord_(sh, name, row) {
-  const cols = SHEET_COLUMNS[name];
-  const values = sh.getRange(row, 1, 1, cols.length).getValues()[0];
+  const layout = sheetLayout_(sh, name);
+  const values = sh.getRange(row, 1, 1, layout.columns.length).getValues()[0];
   const rec = {};
-  cols.forEach(function (c, i) {
-    rec[c] = String(values[i]);
+  layout.columns.forEach(function (c, i) { rec[c] = values[i]; });
+  SHEET_COLUMNS[name].forEach(function (c, i) {
+    rec[c] = String(values[layout.columns.indexOf(layout.fields[i])]);
   });
   return rec;
 }
 
-function recordValues_(name, rec) {
-  return SHEET_COLUMNS[name].map(function (c) {
-    return rec[c] === undefined ? '' : rec[c];
+function recordValues_(sh, name, rec) {
+  const layout = sheetLayout_(sh, name);
+  return layout.columns.map(function (c) {
+    const i = layout.fields.indexOf(c);
+    const value = rec[i < 0 ? c : SHEET_COLUMNS[name][i]];
+    return value === undefined ? '' : value;
   });
 }
 
@@ -246,7 +267,7 @@ function loadPhoto_(inspectionId, photoId) {
   const sh = sheet_('Photos');
   const row = findRow_(sh, photoId);
   const rec = row ? readRecord_(sh, 'Photos', row) : null;
-  if (!rec || rec.inspection_id !== inspectionId) throw new GatewayError('NOT_FOUND', 'Foto tidak ditemukan');
+  if (!rec || rec.inspection_id !== inspectionId || !rec.reserved_at) throw new GatewayError('NOT_FOUND', 'Foto tidak ditemukan dalam reservasi gateway ini');
   return { sheet: sh, row: row, rec: rec };
 }
 
@@ -367,7 +388,7 @@ function adminSelfTest() {
     withLock_(function () {
       const loaded = loadPhoto_(inspectionId, photoId);
       loaded.rec.status = 'reserved';
-      writeRow_(loaded.sheet, loaded.row, recordValues_('Photos', loaded.rec));
+      writeRow_(loaded.sheet, loaded.row, recordValues_(loaded.sheet, 'Photos', loaded.rec));
     });
     const healed = uploadPhoto(upload);
     expect(healed.status === 'stored' && healed.replayed === true, 'pemulihan seharusnya menandai stored lewat verifikasi file yang ada');

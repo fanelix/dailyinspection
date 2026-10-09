@@ -54,6 +54,9 @@ export function createFakeAppsScript({ secret, spreadsheetId = 'sheet-test', roo
     return {
       name,
       rows,
+      getLastColumn() {
+        return rows.reduce((last, row) => Math.max(last, row.reduce((width, v, i) => v === '' || v === undefined ? width : i + 1, 0)), 0);
+      },
       getLastRow() {
         let last = rows.length;
         while (last > 0 && (rows[last - 1] ?? []).every((v) => v === '' || v === undefined)) last--;

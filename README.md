@@ -57,17 +57,35 @@ Branch `codex/t2-checklists` berasal dari `claude/eager-carson-bqb25q` pada comm
 - Form masih memakai maksimal satu foto T1. Data boleh dikirim tanpa foto; semua temuan tanpa foto wajib beralasan. Upload multi-foto/finalisasi tetap T4. Status record tetap `uploading`, tidak pernah `submitted` pada T2.
 - Nama petugas teks manual (1–100 karakter setelah trim), bukan pilihan nama tetap maupun identitas login.
 - **Sub-area / detail lokasi** adalah teks manual opsional untuk semua area (maksimal 200 karakter setelah trim), misalnya nama blok, bench, sektor atau bagian fasilitas. Kosong tidak diberi nama otomatis. Disimpan pada kolom `sub_area` dan snapshot; isi ini ikut checksum dan konflik retry. Saat area diganti, sub-area dikosongkan setelah konfirmasi. Header T2 awal 12 kolom diperluas menjadi 13 tanpa mengubah baris lama; payload lama tanpa sub-area tetap valid. Ini adalah detail nama lokasi; koordinat/peta tetap T3.
-- Lima kolom ditambahkan di akhir `Inspections`: `schema_version`, `template_version`, `area_id`, `checklist_json`, `sub_area`. Header T1 dan T2 awal yang tepat dikenali dan diperluas otomatis saat akses, tanpa mengubah baris lama. Header diubah/tertukar ditolak agar data tidak salah kolom.
+- Header T1 (8 kolom), T2 awal (12 kolom), T2 lengkap (13 kolom), serta skema staging pengguna (`Inspections` 17 kolom / `Photos` 10 kolom) dikenali secara tepat. Kolom yang kurang ditambahkan di kanan, tanpa mengubah header atau baris lama. Header diubah/tertukar ditolak agar data tidak salah kolom.
 - `checklist_json` menyimpan snapshot item/label/petunjuk, jawaban, rincian temuan, relasi photo ID, dan flag review. ID bukan untuk ditampilkan/dibagikan. ID inspeksi sama dengan checklist berbeda menghasilkan konflik; retry identik tidak membuat baris baru.
 - Gateway mengembalikan versi serta SHA-256 JSON checklist. UI hanya melanjutkan/sukses setelah checksum sesuai; gateway T1 yang mengabaikan kolom baru tidak boleh menghasilkan sukses palsu. Konfirmasi itu hanya metadata; foto tetap harus mendapat `stored` + checksum foto.
+
+### Memakai database staging yang sudah ada
+
+Keputusan pengguna 9 Oktober: gunakan **Geotech Inspection Staging DB** yang sama. Header aslinya diperiksa melalui koneksi Google Sheets; `SPREADSHEET_ID` tetap. Gateway mengenali dua susunan kolom lewat `sheetLayout_`, lalu semua pembacaan/penulisan record memakai pemetaan yang sama:
+
+| Data gateway | Kolom staging yang dipakai |
+|---|---|
+| Nama petugas (`inspector_name`) | `reporter_name` |
+| Waktu diterima (`received_at`) | `created_at` |
+| Status (`status`) | `workflow_status` |
+| Versi record (`version`) | `revision` |
+| SHA-256 foto (`sha256`) | `checksum` |
+
+- `Inspections`: enam kolom baru **R:W** = `device_id`, `observed_at`, `note`, `schema_version`, `checklist_json`, `sub_area` (17 → 23). `area_id` dan `template_version` dipakai di posisi lama. Record baru memiliki `updated_at` sama dengan waktu dibuat, identitas/submission tetap `unverified`, dan status `uploading`.
+- `Photos`: empat kolom baru **K:N** = `size`, `mime`, `reserved_at`, `stored_at` (10 → 14). Foto T2 memakai revision inspeksinya; byte tetap disimpan di Drive privat.
+- Kolom lama seperti `operation_id`, `operational_date`, `shift`, `template_id`, relasi item/finding foto, dan tab lain tidak diisi otomatis oleh T2. Waktu observasi lengkap ada di `observed_at`; hubungan temuan/foto ada pada snapshot `checklist_json`. T2 memakai template repo, bukan mengubah tab master `ChecklistTemplates`.
+- Catatan lama, termasuk baris self-test T1 yang dahulu masuk dengan posisi salah, dipertahankan apa adanya. ID inspeksi lama tidak dipakai ulang. Foto skema lama yang tidak memiliki reservasi gateway tidak diterima sebagai foto T2 dan tidak ditulis ulang; pemulihan riwayat lama bukan bagian T2.
+- Pengujian lokal mereproduksi kedua jenis baris lama dan memeriksa prepare/retry, upload/baca foto, pemulihan tanpa file ganda, serta penolakan header yang tidak dikenal. Header asli sudah dibaca; penambahan kolom dan penulisan melalui Apps Script sungguhan masih perlu `adminSelfTest` pengguna.
 
 ### Memperbarui staging untuk menguji T2
 
 T2 **belum terbukti pada Google sungguhan**. Simpan salinan Spreadsheet staging sebelum pembaruan. Tidak perlu menghapus tab atau data T1.
 
 1. Salin **tiga** file `apps-script/src/gateway.js`, `storage.js`, dan **`checklist.js`** ke editor Apps Script (nama file `gateway`, `storage`, `checklist`). Isi `checklist.js` dihasilkan oleh `npm run sync:checklist`; jangan diedit terpisah.
-2. Jalankan `adminSelfTest` di editor staging. Selain uji foto T1, fungsi ini memeriksa versi/checklist/checksum pada Sheets. Periksa header tambahan dan bahwa baris T1 lama tetap utuh. Uji ini meninggalkan baris uji dan membuang foto uji ke trash.
-3. Buat **New version** untuk deployment web app. Jalankan Tahap A; `build` harus **`2026-10-09.3`**, `schemaVersion` **2**. Envelope HMAC tetap `v:1`.
+2. Pertahankan `SPREADSHEET_ID` database yang sama. Jalankan `adminSelfTest` di editor staging. Selain uji foto T1, fungsi ini memeriksa versi/checklist/checksum pada Sheets. Periksa header tambahan sesuai susunan tab yang dikenali dan bahwa baris lama tetap utuh. Uji ini meninggalkan baris uji dan membuang foto uji ke trash.
+3. Buat **New version** untuk deployment web app. Jalankan Tahap A; `build` harus **`2026-10-09.4`**, `schemaVersion` **2**. Envelope HMAC tetap `v:1`.
 4. Deploy frontend branch T2 ke preview/staging yang disetujui, lalu jalankan `checks/live.mjs` atau `checks/live-browser.js` terbaru. Skrip kini mengirim checklist sintetis `Tidak diperiksa`, memeriksa penolakan jawaban kosong dan konfirmasi versi/checksum, lalu menguji upload/retry/baca foto.
 5. Uji Android nyata: pilih area, periksa jawaban awal kosong, isi nama dan sub-area manual, buat temuan berfoto serta tanpa foto/alasan, lalu periksa `checklist_json` dan kolom `sub_area`. Checklist isi operasional tetap perlu review engineer.
 
@@ -75,10 +93,12 @@ Gateway T2 menolak payload lama tanpa versi/checklist (tidak diisi default). Kar
 
 ### Bukti lokal T2
 
-- Check merah pada T1: 5 kasus gagal karena jawaban kosong/versi tidak diperiksa dan kolom belum tersedia. Setelah implementasi, `npm run check` lulus **18 test**, termasuk regresi T1; `npm run build` lulus.
+- Check merah pada T1: 5 kasus gagal karena jawaban kosong/versi tidak diperiksa dan kolom belum tersedia. Setelah implementasi dan penyesuaian skema staging, `npm run check` lulus **22 test**, termasuk regresi T1; `npm run build` lulus.
 - Mutation check: sengaja mengganti jawaban kosong menjadi `no_finding` membuat dua test gagal; perubahan mutasi dibatalkan, validator dihasilkan ulang.
 - Chromium headless pada `next start` lokal + gateway tiruan: UI 360 px dan 1024 px diperiksa; 7 area mulai kosong, item wajib, temuan tanpa foto/review, ukuran null, retry tanpa duplikasi, gateway lama ditolak, kaitan foto + unggah/baca kembali, dan reset area lulus. Ini bukan uji Chrome Android nyata.
 - Revisi sub-area: dua check baru gagal sebelum implementasi lalu lulus, termasuk kompatibilitas snapshot/header T2 awal. Uji browser lokal 360/1024 px lulus: sub-area tersedia untuk ketujuh area, trim dan penyimpanan, retry identik, lokasi berubah menjadi record baru, serta konfirmasi/reset saat mengganti area. Screenshot diperiksa tanpa overflow/overlap.
+- Kompatibilitas staging: tiga check baru awalnya gagal dengan error header yang sama seperti screenshot pengguna, lalu lulus setelah pemetaan. Empat check pada `checks/storage-layout.check.mjs` memeriksa tambahan kolom, pelestarian baris lama/misaligned, checksum, prepare/retry/upload/baca/pemulihan dan `adminSelfTest` tiruan, serta header rusak tetap ditolak.
+- Salinan XLSX database yang diberikan pengguna juga dimuat seluruhnya ke runtime tiruan: `adminSelfTest` lulus, semua sel/baris asli dipertahankan, tab lain tidak berubah, header Inspections/Photos bertambah menjadi 23/14 kolom. Ini tetap bukan penulisan ke Sheets sungguhan. Review terpisah atas pemetaan storage tidak menemukan masalah material.
 - Review kode terpisah tidak menemukan masalah material. Tiruan Apps Script tetap tidak membuktikan perilaku Google.
 
 ## Perintah
