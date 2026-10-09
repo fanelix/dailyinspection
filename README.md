@@ -10,7 +10,7 @@ Yang berlaku sekarang:
 
 - Aplikasi **tidak punya login, cookie, atau kode**. Siapa pun yang tahu URL-nya dapat membuat inspeksi dan mengunggah foto.
 - Gateway Apps Script tetap tidak bisa dipanggil langsung: server Next menandatangani setiap pesan (HMAC, timestamp, nonce).
-- Foto tetap privat (bukan tautan Drive publik). Foto yang sudah ada hanya terbaca lewat **pasangan ID inspeksi + ID foto** yang harus berpasangan; keduanya UUID acak 122 bit yang dibuat browser. ID itu berfungsi seperti kunci: jangan ditampilkan, dicatat, atau dibagikan di tempat umum.
+- Kode tidak membuat tautan Drive publik. Endpoint foto memakai **pasangan ID inspeksi + ID foto** yang harus berpasangan; keduanya UUID acak 122 bit yang dibuat browser. ID itu berfungsi seperti kunci: jangan ditampilkan, dicatat, atau dibagikan di tempat umum. Privasi file sumber juga bergantung pada izin Drive; temuan izin foto uji T2 dicatat di bawah.
 
 Risiko yang diterima pengguna (sudah disampaikan sebelum keputusan):
 
@@ -22,9 +22,9 @@ Perlindungan yang masih ada: HMAC gateway, validasi payload, batas 2 MB dan 5 fo
 
 **Belum ada dan perlu keputusan pengguna:** batas laju atau kuota harian. Angkanya bergantung pada kapasitas yang belum ditetapkan (rencana §16), jadi tidak saya karang. Pengaman tanpa friksi yang bisa dipertimbangkan: aturan pembatasan laju di Vercel (Firewall; ingatan saya, belum diverifikasi), dan tidak menyebarkan URL. Alternatif ringan yang pernah ditawarkan dan ditolak: tautan aktivasi sekali ketuk, dan kode tim.
 
-## Status: implementasi T2 selesai (bukti lokal, 2026-10-09)
+## Status: implementasi dan uji fungsi T2 di preview (2026-10-09)
 
-Satu inspeksi + satu foto privat: simpan metadata (Sheets) → unggah foto (Drive) → baca kembali, dengan retry yang tidak menggandakan file.
+Satu inspeksi + satu foto: simpan metadata (Sheets) → unggah foto (Drive) → baca kembali, dengan retry memakai reservasi yang sama.
 
 **Terbukti 2026-10-09 di staging pengguna** (Vercel + Apps Script + Drive + Sheets sungguhan): gateway menolak pesan tanpa tanda tangan (Tahap A, build `2026-10-09.1`); `adminSelfTest` lulus; alur penuh lewat Vercel dari browser (`checks/live-browser.js`, 14 pemeriksaan otomatis lulus, termasuk upload yang diputus klien lalu diulang → `replayed=true` tanpa file kedua); dan pemeriksaan manual pengguna di Drive dan Sheets lulus (satu file, baris `stored`, catatan `=…` tetap teks, foto tidak terbuka tanpa izin).
 
@@ -38,7 +38,7 @@ Belum ada (task berikutnya): lokasi/peta (T3), finalisasi (T4), draft offline (T
 
 ## T2: checklist usulan dan penyimpanan
 
-Branch `codex/t2-checklists` berasal dari `claude/eager-carson-bqb25q` pada commit `50318a7`. Perubahan T2 disiapkan pada branch terpisah karena branch awal terhubung langsung ke staging Vercel. Belum digabung atau di-deploy ke Google/Vercel pada sesi T2.
+Branch `codex/t2-checklists` berasal dari `claude/eager-carson-bqb25q` pada commit `50318a7`. Perubahan T2 disiapkan pada branch terpisah karena branch awal terhubung langsung ke staging Vercel. Preview T2 sudah Ready dan diuji lewat cloud browser pada 9 Oktober; gateway menulis T2 ke database staging yang sama. PR #1 masih draft dan belum digabung. Deployment Production proyek masih memakai kode T1; jangan memakai domain Production untuk uji form T2.
 
 | Area | Enam item usulan |
 |---|---|
@@ -74,14 +74,14 @@ Keputusan pengguna 9 Oktober: gunakan **Geotech Inspection Staging DB** yang sam
 | SHA-256 foto (`sha256`) | `checksum` |
 
 - `Inspections`: enam kolom baru **R:W** = `device_id`, `observed_at`, `note`, `schema_version`, `checklist_json`, `sub_area` (17 → 23). `area_id` dan `template_version` dipakai di posisi lama. Record baru memiliki `updated_at` sama dengan waktu dibuat, identitas/submission tetap `unverified`, dan status `uploading`.
-- `Photos`: empat kolom baru **K:N** = `size`, `mime`, `reserved_at`, `stored_at` (10 → 14). Foto T2 memakai revision inspeksinya; byte tetap disimpan di Drive privat.
+- `Photos`: empat kolom baru **K:N** = `size`, `mime`, `reserved_at`, `stored_at` (10 → 14). Foto T2 memakai revision inspeksinya; byte disimpan di Drive. Izin file sumber perlu mengikuti kebutuhan privat (lihat temuan uji web di bawah).
 - Kolom lama seperti `operation_id`, `operational_date`, `shift`, `template_id`, relasi item/finding foto, dan tab lain tidak diisi otomatis oleh T2. Waktu observasi lengkap ada di `observed_at`; hubungan temuan/foto ada pada snapshot `checklist_json`. T2 memakai template repo, bukan mengubah tab master `ChecklistTemplates`.
 - Catatan lama, termasuk baris self-test T1 yang dahulu masuk dengan posisi salah, dipertahankan apa adanya. ID inspeksi lama tidak dipakai ulang. Foto skema lama yang tidak memiliki reservasi gateway tidak diterima sebagai foto T2 dan tidak ditulis ulang; pemulihan riwayat lama bukan bagian T2.
-- Pengujian lokal mereproduksi kedua jenis baris lama dan memeriksa prepare/retry, upload/baca foto, pemulihan tanpa file ganda, serta penolakan header yang tidak dikenal. Header asli sudah dibaca; penambahan kolom dan penulisan melalui Apps Script sungguhan masih perlu `adminSelfTest` pengguna.
+- Pengujian lokal mereproduksi kedua jenis baris lama dan memeriksa prepare/retry, upload/baca foto, pemulihan tanpa file ganda, serta penolakan header yang tidak dikenal. Header 23/14 kolom sudah terbaca di Sheets sungguhan; penulisan melalui web T2 terbukti sesuai pemetaan. Hasil lengkap `adminSelfTest` pengguna tidak diamati pada sesi ini.
 
 ### Memperbarui staging untuk menguji T2
 
-T2 **belum terbukti pada Google sungguhan**. Simpan salinan Spreadsheet staging sebelum pembaruan. Tidak perlu menghapus tab atau data T1.
+Runbook pembaruan dan pengujian ulang berikut tetap berlaku. Uji fungsi web T2 terhadap Google sungguhan sudah dijalankan; hasil dan batas buktinya ada di bawah. Simpan salinan Spreadsheet staging sebelum pembaruan. Tidak perlu menghapus tab atau data T1.
 
 1. Salin **tiga** file `apps-script/src/gateway.js`, `storage.js`, dan **`checklist.js`** ke editor Apps Script (nama file `gateway`, `storage`, `checklist`). Isi `checklist.js` dihasilkan oleh `npm run sync:checklist`; jangan diedit terpisah.
 2. Pertahankan `SPREADSHEET_ID` database yang sama. Jalankan `adminSelfTest` di editor staging. Selain uji foto T1, fungsi ini memeriksa versi/checklist/checksum pada Sheets. Periksa header tambahan sesuai susunan tab yang dikenali dan bahwa baris lama tetap utuh. Uji ini meninggalkan baris uji dan membuang foto uji ke trash.
@@ -90,6 +90,17 @@ T2 **belum terbukti pada Google sungguhan**. Simpan salinan Spreadsheet staging 
 5. Uji Android nyata: pilih area, periksa jawaban awal kosong, isi nama dan sub-area manual, buat temuan berfoto serta tanpa foto/alasan, lalu periksa `checklist_json` dan kolom `sub_area`. Checklist isi operasional tetap perlu review engineer.
 
 Gateway T2 menolak payload lama tanpa versi/checklist (tidak diisi default). Karena itu pembaruan gateway dan frontend staging perlu dikoordinasikan; frontend T1 tidak dapat mengirim inspeksi baru setelah gateway diganti. Data/foto T1 lama tetap dipertahankan. Jangan mengembalikan gateway T1 untuk menulis baris T2; pemulihan kode harus memakai pasangan frontend/gateway yang cocok dan menjaga kolom tambahan.
+
+### Bukti web T2 dan batasnya — 9 Oktober 2026
+
+Uji melalui preview `codex/t2-checklists`, source `22129f9`, setelah pengguna menyelesaikan login Vercel di cloud browser. Login tersebut adalah Deployment Protection preview, bukan aktivasi perangkat aplikasi. Proteksi tidak diubah. Database tetap **Geotech Inspection Staging DB** yang sama.
+
+- Checklist kosong ditolak oleh validasi form; sel database yang diperiksa tidak berubah. Temuan tanpa foto dan tanpa alasan juga ditolak form.
+- Satu catatan sintetis Pit tanpa foto tersimpan: schema 2, template `2026-10-09.draft1`, enam `not_inspected`, sub-area di-trim dan cocok dengan snapshot. Sub-area dan catatan berawalan `=` kembali sebagai teks, bukan rumus. Pengiriman ulang identik tidak menambah atau mengubah sel record.
+- Catatan sintetis kedua memakai satu JPEG 8×8: temuan pertama dikaitkan secara eksplisit ke foto; temuan kedua tanpa foto mempunyai alasan. Snapshot menyimpan empat kode jawaban terpisah dan `reviewRequired=true`; pengukuran kedua temuan tetap null. Foto berstatus `stored`, 802 byte, dibaca kembali lewat endpoint; SHA-256 byte hasil download cocok dengan kolom `checksum`.
+- Retry kedua menampilkan acknowledgment replay dan baca foto berhasil; baris `Inspections`/`Photos`, reservasi file dan checksum tidak berubah. Uji meninggalkan **dua catatan sintetis dan satu reservasi foto stored**. Tidak ada penghapusan data uji atau perubahan data lama pada rentang yang diperiksa (baris 1–80, kolom nama, observasi, catatan, snapshot, sub-area dan metadata foto).
+- **Izin Drive belum memenuhi kebutuhan privat:** metadata foto uji menunjukkan `shared=true`, permission `anyone` berperan `writer`. Izin sumber/inheritance perlu diperiksa dan dibatasi sebelum foto lapangan dipakai. Tidak ada perubahan izin pada sesi ini. Pencarian exact-name Drive tidak mengembalikan hasil, sehingga jumlah file fisik di folder belum dibuktikan secara terpisah; bukti retry terbatas pada acknowledgment dan reservasi Sheets yang sama.
+- Ini uji UI desktop cloud browser dan jalur web → gateway → Sheets/Drive, bukan eksekusi seluruh `checks/live.mjs`/`live-browser.js`. Build `doGet` gateway belum dibaca langsung; kegagalan jaringan setelah write tidak disimulasikan pada sesi ini. Android nyata untuk form T2 dan persetujuan checklist engineer masih belum terbukti. Tidak ada merge/promosi Production atau pekerjaan T3–T7.
 
 ### Bukti lokal T2
 
