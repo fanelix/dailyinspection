@@ -30,7 +30,24 @@
 - **Data:** record itu memakai nama dan GPS nyata. Statusnya belum ditetapkan, jadi jangan dihapus.
 - Rincian ada di `docs/runbook.md` bagian 3.
 
-**Berikutnya:** pengguna memutuskan G3, G4, dan G5. Drill rollback atau uji restore di staging hanya dijalankan bila pengguna memberi izin. Tanpa izin itu, T7 berhenti di sini.
+**Keputusan G3–G5 (2026-10-10):**
+- **G3:** rata-rata 3 inspeksi per hari. Batas laju belum diputuskan.
+- **G4:** didelegasikan ke agent. Dipilih satu PR rilis draft `claude/zen-heisenberg-kcgjpu` → `main`, belum di-merge. Vercel Production Branch akan menjadi `main`.
+- **G5:** pakai Apps Script, Spreadsheet, dan folder Drive yang ada.
+
+Akibat G5 ada di `docs/runbook.md` bagian 1a:
+- tidak ada staging terpisah;
+- data uji lama tetap tampil di riwayat;
+- izin foto Android terbaru `anyone`/writer (diperiksa baca saja; tidak diubah);
+- rotasi secret disarankan;
+- gateway tidak perlu diubah.
+
+**Berikutnya:**
+1. Backup Spreadsheet (G6).
+2. Keputusan izin foto dan rotasi secret.
+3. Perintah merge PR rilis.
+4. Atur Vercel Production Branch = `main`.
+5. Smoke test, lalu pilot (G7). Drill rollback atau uji restore di staging hanya dijalankan bila pengguna memberi izin. Tanpa izin itu, T7 berhenti di sini.
 
 ## T6 dan verifikasi riwayat/review/ekspor — 10 Oktober 2026 (sesi Codespace)
 

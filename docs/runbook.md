@@ -10,11 +10,33 @@ Keputusan ini milik pengguna. Agent tidak mengisi kolom status dengan asumsi.
 |---|---|---|
 | G1 | Pemeriksaan manual Sheets T6 (`Inspections!Z`, data lama utuh) dilaporkan lulus | **Lulus menurut laporan pengguna** (2026-10-10) |
 | G2 | Uji Android nyata (bagian 3) lulus untuk semua butir kritis | **Lulus menurut laporan pengguna** (2026-10-10); lihat "Hasil uji Android" di bagian 3 |
-| G3 | Kapasitas dan batas laju diputuskan (plan §16; README "Batas laju belum ada") | Menunggu angka pengguna |
-| G4 | Keputusan merge PR #1–#5 (semua draft, bertumpuk) dan branch Production | Belum diputuskan |
-| G5 | Proyek Apps Script, Spreadsheet, folder Drive, dan secret Production dipisah dari staging | Tidak tercatat di handoff |
+| G3 | Kapasitas dan batas laju diputuskan (plan §16; README "Batas laju belum ada") | **Kapasitas diputuskan: rata-rata 3 inspeksi per hari.** Batas laju belum diputuskan |
+| G4 | Keputusan merge PR #1–#5 (semua draft, bertumpuk) dan branch Production | **Diputuskan** (didelegasikan ke agent): satu PR rilis `claude/zen-heisenberg-kcgjpu` → `main`, merge commit, Vercel Production Branch = `main` |
+| G5 | Sumber daya Production (Apps Script, Spreadsheet, folder Drive, secret) | **Diputuskan: pakai yang sudah ada** (staging menjadi Production). Lihat akibatnya di bagian 1a |
 | G6 | Backup metadata dan foto aktif sebelum rollout (bagian 4) | Belum |
-| G7 | Pemilik operasional menerima hasil pilot (plan §13 tahap 7) | Belum |
+| G7 | Pemilik operasional menerima hasil pilot (plan §13 tahap 7); pilot berjalan setelah rollout | Belum |
+
+## 1a. Keputusan 2026-10-10 dan akibatnya
+
+**Kapasitas (G3).** Rata-rata 3 inspeksi per hari.
+- Foto Android nyata yang tercatat berukuran 632 KB.
+- Bila 1–3 foto per inspeksi: kira-kira 2–6 MB per hari, atau 0,7–2 GB per tahun.
+- Batas atas (5 foto × 2 MB): 30 MB per hari.
+- Sheets bertambah sekitar 1.100 baris per tahun.
+- Setiap inspeksi memanggil gateway untuk prepare, satu kali per foto, dan finalisasi. Volume ini kecil. Kuota Apps Script belum diukur.
+- Batas laju masih terbuka. Usulan, bukan keputusan: batas harian di gateway, misalnya 30 inspeksi per hari (10× rata-rata). Ini butuh perubahan dan deploy Apps Script, jadi hanya dikerjakan bila pengguna meminta.
+
+**Branch (G4).** Satu PR rilis dari `claude/zen-heisenberg-kcgjpu` ke `main`.
+- Menurut handoff, Vercel Production melacak `claude/eager-carson-bqb25q`, yaitu base PR #1. Merge tumpukan bertahap akan mengirim versi antara (T2, T3, dan seterusnya) ke Production satu per satu.
+- Satu PR ke `main` memberi satu titik peralihan, dan `main` menjadi branch stabil (plan §15).
+- Setelah merge, PR #1–#5 ditutup sebagai *superseded*; commit-nya sudah ada di `main`.
+
+**Sumber daya (G5): pakai yang ada.** Akibatnya:
+1. **Tidak ada lagi staging terpisah.** Preview Vercel dan uji berikutnya menulis ke Spreadsheet dan folder yang sama dengan data Production. Uji harus diberi label jelas.
+2. **Data uji lama tetap tampil di riwayat.** Contohnya smoke test, baris uji T1–T6, dan baris `#ERROR!`. Pembersihan memerlukan keputusan pengguna. Agent tidak menghapus.
+3. **Izin foto: `anyone` sebagai writer.** Diperiksa 2026-10-10 (baca saja) pada foto Android terbaru. Siapa pun yang memegang tautan file dapat melihat dan mengubahnya. Aplikasi tidak membocorkan ID Drive, tetapi izin ini tidak privat. Atas keputusan pengguna 2026-10-09, agent tidak mengubahnya. Pengguna perlu memutuskan sebelum foto lapangan rutin.
+4. **Rotasi `GATEWAY_HMAC_SECRET` disarankan.** Handoff mencatat nilainya sempat tampil di log sesi sebelumnya. Rotasi berarti mengganti Script Property lalu env Vercel (Production dan Preview) dengan nilai yang sama. Lakukan berurutan, karena antara dua langkah itu kiriman gagal `UNAUTHORIZED`. Antrean di perangkat tetap aman dan bisa dikirim ulang.
+5. **Gateway sudah build `2026-10-10.2`.** Rollout tidak memerlukan perubahan Apps Script.
 
 ## 2. Bukti T7 yang sudah ada
 
@@ -114,21 +136,27 @@ Prosedur rollback (dipakai setelah rollout):
 
 Drill rollback di staging (frontend T6 → T5, lalu kembali) **belum dijalankan**. Drill memerlukan pengguna men-deploy versi Apps Script dan Vercel.
 
-## 6. Rollout Production (hanya setelah gerbang G1–G7)
+## 6. Rollout Production (memakai sumber daya yang ada, G5)
 
-1. Beri tag pada commit yang dirilis. Catat commit frontend, build gateway, dan schema version.
-2. Buat sumber daya Production (G5): Spreadsheet, folder Drive, proyek Apps Script, dan secret baru. Jangan pakai ulang secret staging.
-3. Deploy gateway: enam file dari tag (`gateway`, `storage`, `checklist`, `location`, `locations`, `projection`). Deploy → Manage deployments → Edit → New version → Deploy.
-4. Tahap A: `GATEWAY_URL=<url prod> node checks/live.mjs`. Build harus cocok. Pesan tanpa tanda tangan harus ditolak `UNAUTHORIZED`.
-5. Vercel Production: `GATEWAY_URL` dan `GATEWAY_HMAC_SECRET`. Branch Production sesuai keputusan G4. Pastikan sumber deployment adalah tag.
-6. Smoke test dengan data berlabel jelas. Membuat data uji di Production adalah tindakan keluar yang memerlukan persetujuan pengguna pada saat itu.
-7. Pilot 3–5 hari operasional. Pemilik menilai hasil sebelum dianggap selesai.
+1. **Backup (G6).** Salin Spreadsheet (File → Make a copy) dan catat folder foto. Ini titik pulih data sebelum Production.
+2. **Rotasi secret** (bagian 1a butir 4), bila pengguna setuju.
+3. **Merge PR rilis ke `main`** atas perintah pengguna. Beri tag pada commit merge.
+4. **Vercel:** Settings → Environments → Production → Branch Tracking = `main`. Pastikan env Production `GATEWAY_URL` menunjuk gateway yang ada. Pastikan halaman deployment menampilkan commit merge.
+5. **Smoke test.** Buka domain Production, kirim satu inspeksi berlabel `Uji produksi <tanggal>`. Sheets harus bertambah tepat satu inspeksi, dan foto `stored` dengan checksum sama dengan manifest.
+6. **Pilot 3–5 hari** (G7). Pemilik menilai hasil sebelum dianggap selesai.
+
+**Rollback setelah rollout.** Kode Production yang lama (T1) tidak kompatibel dengan gateway sekarang (bagian 5). Jadi target rollback adalah deployment rilis yang sudah teruji:
+- Vercel Instant Rollback ke deployment Production sebelumnya dari rilis ini; atau
+- promosikan deployment preview T6 yang sudah diuji di Android (Promote to Production), bila tersedia di paket Vercel.
+
+Gateway tidak di-rollback (bagian 5).
 
 ## 7. Keputusan terbuka untuk pengguna
 
-- Angka kapasitas dan batas laju (plan §16; README).
-- Frekuensi dan pemilik backup; lokasi salinan foto yang independen.
-- Branch Production dan urutan merge PR #1–#5.
-- Apakah Production memakai Apps Script dan Spreadsheet baru (disarankan) atau yang sudah ada.
-- Izin menjalankan uji restore dan drill rollback di staging.
+- Batas laju (usulan di bagian 1a).
+- Izin foto `anyone`/writer di folder yang dipakai (bagian 1a butir 3).
+- Rotasi `GATEWAY_HMAC_SECRET` sebelum Production.
+- Status data uji lama dan record Android "Alfan / Pit C" (observasi nyata atau uji).
+- Perintah merge PR rilis ke `main` dan pengaturan Vercel Production Branch.
+- Frekuensi dan pemilik backup, serta lokasi salinan foto yang independen.
 - Keputusan akses tanpa aktivasi perangkat (2026-10-09) tetap berlaku; risikonya diterima pengguna.
