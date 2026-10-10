@@ -9,6 +9,8 @@
 - PR #1–#5 ditutup sebagai superseded. Branch kerja agent `claude/zen-heisenberg-kcgjpu` sudah di-merge; pekerjaan baru dimulai ulang dari `main`.
 - Pemeriksaan: `npm ci`, `npm run check` (74/74), `npm run build`, dengan Node ≥ 22.18.
 - Uji browser T7: `PLAYWRIGHT_MODULE=<path playwright> node checks/t7-browser.mjs` setelah build. Hasil 20/20 dengan gateway tiruan. Tidak masuk `npm run check`.
+- **Pembaruan UI (PR #9, merge `0e8116c`):** tampilan mengikuti design system "Inspeksi Lapangan" yang disetujui pengguna di kanvas desain (HP 390 px, tablet 1024 px). Header navy dengan logo BSI dan chip Online/Offline, panel berbilah navy, dua kolom ≥ 768 px, bilah aksi lengket di form, lencana status kata + ikon. Jawaban checklist, sistem koordinat, belahan bumi, dan status review kini radio segmen; foto di detail baru diunduh setelah "Baca foto". Font Roboto (`next/font`) dan logo masuk shell offline. Logika draft/antrean/kirim/lokasi, gateway, dan data tidak berubah. Bukti: `npm run check` 74/74, build lulus, `checks/t7-browser.mjs` 20/20 (selektor radio baru), tangkapan layar empat layar di 390/1024 px. **Belum di-Promote** dan belum diuji di Android nyata.
+- Perbedaan yang disengaja dari kanvas desain: Beranda dan form tetap satu halaman (alur draft/antrean T5 tidak dirombak), tanpa bilah navigasi bawah, chip header tanpa jam sinkron.
 
 **Production**
 - Vercel Production Branch = `main`, dengan promosi manual. Deployment `main` berstatus "Production Staged" sampai di-Promote. Deployment `b808b4f` (docs saja) mungkin belum dipromosikan; aplikasinya sama.
@@ -56,9 +58,11 @@
 3. Backup foto jangka panjang di lokasi resmi perusahaan.
 4. Pembersihan data uji dan status record "Alfan / Pit C".
 5. Foto penutupan review (ditunda; mengubah invarian manifest T4).
+6. Promosi tampilan PR #9: coba deployment `main` di Android, lalu Promote saat tidak ada pengisian berjalan (service worker baru aktif setelah semua tab ditutup; kirim draft tertunda dulu). Rollback lewat Vercel Instant Rollback.
+7. Logo BSI (`app/bsi-logo-white.png`) kini ada di repo publik; pengguna belum memutuskan boleh atau diganti teks.
 
 **Prompt awal sesi berikutnya (saran):**
-> Lanjutkan repo https://github.com/fanelix/dailyinspection dari `main` terbaru. Baca AGENTS.md, CLAUDE.md, docs/handoff.md (Rekap pindah sesi), docs/runbook.md, docs/plan.md, dan README.md. Status: rilis T0–T7 aktif di Production; sisa pilot G7. Verifikasi cepat `npm ci`, `npm run check` (74/74), dan `npm run build` dengan Node ≥ 22.18, lalu tunggu arahan saya. Jangan ubah izin foto, login/aktivasi, gateway, atau merge/promote tanpa perintah.
+> Lanjutkan repo https://github.com/fanelix/dailyinspection dari `main` terbaru. Baca AGENTS.md, CLAUDE.md, docs/handoff.md (Rekap pindah sesi), docs/runbook.md, docs/plan.md, dan README.md. Status: rilis T0–T7 aktif di Production; sisa pilot G7; tampilan baru PR #9 sudah di `main` tetapi belum di-Promote. Verifikasi cepat `npm ci`, `npm run check` (74/74), dan `npm run build` dengan Node ≥ 22.18, lalu tunggu arahan saya. Jangan ubah izin foto, login/aktivasi, gateway, atau merge/promote tanpa perintah.
 
 
 ## T7 — uji browser, backup/restore, dan rollout (2026-10-10, sesi ini)
