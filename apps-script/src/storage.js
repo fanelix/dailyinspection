@@ -250,9 +250,7 @@ function listInspections(payload) {
         const idIndex = layout.columns.indexOf('inspection_id');
         const id = String(row[idIndex] == null ? '' : row[idIndex]);
         if (!UUID_RE.test(id)) { skipped++; return; }
-        const rec = {};
-        layout.columns.forEach(function (c, i) { rec[c] = row[i]; });
-        const item = historyItem_(rec, counts[id] || 0);
+        const item = historyItem_(recordFromRow_('Inspections', layout, row), counts[id] || 0);
         if (q.areaId && item.areaId !== q.areaId) return;
         if (q.status && item.status !== q.status) return;
         const day = item.observedAt ? item.observedAt.slice(0, 10) : null;
@@ -283,8 +281,7 @@ function getInspection(payload) {
       const idIndex = layout.columns.indexOf('inspection_id');
       values.forEach(function (row) {
         if (String(row[idIndex]) !== inspectionId) return;
-        const p = {};
-        layout.columns.forEach(function (c, i) { p[c] = row[i]; });
+        const p = recordFromRow_('Photos', layout, row);
         if (!p.reserved_at) return; // baris skema lama tanpa reservasi gateway bukan foto T2+
         photos.push({
           photoId: String(p.photo_id), status: String(p.status), sha256: String(p.sha256 || ''),
@@ -574,15 +571,20 @@ function countPhotosOf_(photosSheet, inspectionId) {
     }).length;
 }
 
-function readRecord_(sh, name, row) {
-  const layout = sheetLayout_(sh, name);
-  const values = sh.getRange(row, 1, 1, layout.columns.length).getValues()[0];
+function recordFromRow_(name, layout, values) {
   const rec = {};
   layout.columns.forEach(function (c, i) { rec[c] = values[i]; });
+  // Staging memakai nama kolom lain (reporter_name, workflow_status, revision, checksum); salin ke nama kanonis.
   SHEET_COLUMNS[name].forEach(function (c, i) {
     rec[c] = String(values[layout.columns.indexOf(layout.fields[i])]);
   });
   return rec;
+}
+
+function readRecord_(sh, name, row) {
+  const layout = sheetLayout_(sh, name);
+  const values = sh.getRange(row, 1, 1, layout.columns.length).getValues()[0];
+  return recordFromRow_(name, layout, values);
 }
 
 function recordValues_(sh, name, rec) {

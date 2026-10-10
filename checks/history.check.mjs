@@ -216,6 +216,38 @@ test('T6: photos stay reachable only through the matching inspection+photo pair'
   assert.ok(fake.run('getPhoto')({ inspectionId: p.inspectionId, photoId: p.photoIds[0] }).bytesBase64.length > 0);
 });
 
+test('T6: staging-mapped headers resolve canonical fields and photo checksums', () => {
+  const fake = setup();
+  const ss = fake.run('SpreadsheetApp.openById(props_().getProperty("SPREADSHEET_ID"))');
+  const headers = {
+    Inspections: ['inspection_id', 'revision', 'operation_id', 'operational_date', 'shift', 'area_id', 'reporter_name', 'unit_company', 'identity_verification', 'template_id', 'template_version', 'workflow_status', 'submission_verification', 'owner_public_session_id', 'actor_id', 'created_at', 'updated_at', 'device_id', 'observed_at', 'note', 'schema_version', 'checklist_json', 'sub_area', 'location_json'],
+    Photos: ['photo_id', 'inspection_id', 'revision', 'item_id', 'finding_id', 'photo_point_id', 'drive_file_id', 'thumbnail_file_id', 'checksum', 'status', 'size', 'mime', 'reserved_at', 'stored_at'],
+  };
+  for (const [name, header] of Object.entries(headers)) {
+    const sheet = ss.insertSheet(name);
+    sheet.rows.push(header.slice());
+  }
+  const p = submitted(fake, { findings: 1, name: 'Petugas staging' });
+  const listed = fake.run('listInspections')({ areaId: 'pit', status: 'submitted' });
+  assert.equal(listed.matched, 1);
+  assert.equal(listed.inspections[0].inspectorName, 'Petugas staging');
+  assert.equal(listed.inspections[0].status, 'submitted');
+  assert.equal(listed.inspections[0].version, 2);
+  assert.equal(listed.inspections[0].photoCount, 1);
+  assert.equal(listed.inspections[0].findings.total, 1);
+  const detail = fake.run('getInspection')({ inspectionId: p.inspectionId }).inspection;
+  assert.equal(detail.inspectorName, 'Petugas staging');
+  assert.equal(detail.status, 'submitted');
+  assert.equal(detail.version, 2);
+  assert.equal(detail.photos.length, 1);
+  assert.equal(detail.photos[0].sha256, p.photoManifest[0].sha256);
+  assert.equal(detail.photos[0].size, p.photoManifest[0].size);
+  assert.equal(detail.photos[0].caption, '=keterangan');
+  const reviewed = fake.run('reviewInspection')({ inspectionId: p.inspectionId, expectedVersion: 2, review: { reviewId: randomUUID(), reviewerName: 'Reviewer staging', note: '', findings: [{ itemId: 'cracks', status: 'closed', note: '' }] } });
+  assert.equal(reviewed.version, 3);
+  assert.equal(fake.run('listInspections')({ areaId: 'pit' }).inspections[0].findings.closed, 1);
+});
+
 test('T6: Next list/detail/review routes work against the real gateway client', async () => {
   const fake = setup();
   const p = submitted(fake, { findings: 1 });
