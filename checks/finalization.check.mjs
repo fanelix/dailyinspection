@@ -117,7 +117,7 @@ test('T4: mapped staging headers grow only at the right; old rows survive finali
   }
   const {payload:p,bytes}=body(1),ack=prepare(fake,p);upload(fake,p,bytes,0);finalize(fake,p,ack);
   const insp=fake.state.sheets.get('Inspections'),photos=fake.state.sheets.get('Photos');
-  assert.deepEqual(insp.rows[0],[...headers.Inspections,'photo_manifest_json']);assert.deepEqual(photos.rows[0],[...headers.Photos,'caption']);
+  assert.deepEqual(insp.rows[0],[...headers.Inspections,'photo_manifest_json','review_json']);assert.deepEqual(photos.rows[0],[...headers.Photos,'caption']);
   assert.equal(insp.rows[1].length,2);assert.equal(photos.rows[1].length,2);
   assert.equal(rec(insp,2).workflow_status,'submitted');assert.equal(rec(insp,2).revision,'2');assert.equal(rec(insp,2).submission_verification,'unverified');
   assert.equal(rec(photos,2).caption,'=keterangan sintetis');assert.equal(fake.state.files.size,1);

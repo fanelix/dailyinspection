@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import type * as Leaflet from 'leaflet';
 import type { GpsPoint, ObjectPoint } from '../lib/location.ts';
 
-export default function LocationMap({ observer, point, disabled, onPin }: { observer: GpsPoint | null; point: ObjectPoint | null; disabled: boolean; onPin: (latitude: number, longitude: number) => void }) {
+export default function LocationMap({ observer, point, disabled, onPin, readOnly = false }: { observer: GpsPoint | null; point: ObjectPoint | null; disabled: boolean; onPin: (latitude: number, longitude: number) => void; readOnly?: boolean }) {
   const container = useRef<HTMLDivElement>(null);
   const mapRef = useRef<Leaflet.Map | null>(null);
   const latest = useRef({ onPin, disabled });
@@ -52,7 +52,7 @@ export default function LocationMap({ observer, point, disabled, onPin }: { obse
   }, [ready, observer, point, disabled]);
   return <>
     <div ref={container} className="location-map" role="region" aria-label="Peta lokasi objek; koordinat manual tersedia di bawah" />
-    <p className="hint">Ketuk peta atau geser pin oranye untuk memilih lokasi objek. Biru = GPS petugas; oranye = objek. Peta OpenStreetMap adalah konteks umum.</p>
+    <p className="hint">{readOnly ? 'Peta konteks umum; pin oranye menunjukkan lokasi objek yang tersimpan. Koordinat lengkap ada di atas.' : 'Ketuk peta atau geser pin oranye untuk memilih lokasi objek. Biru = GPS petugas; oranye = objek. Peta OpenStreetMap adalah konteks umum.'}</p>
     {(error || tilesFailed) && <p role="status" className="hint">{error || 'Latar peta tidak dapat dimuat. Koordinat manual dan lokasi tersimpan tetap bisa digunakan.'}</p>}
   </>;
 }

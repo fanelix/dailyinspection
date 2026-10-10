@@ -11,7 +11,7 @@ export class GatewayError extends Error {
   }
 }
 
-type GatewayAction = 'prepareInspection' | 'prepareLocatedInspection' | 'prepareUtmInspection' | 'prepareCompleteInspection' | 'finalizeInspection' | 'uploadPhoto' | 'getPhoto' | 'listLocations';
+type GatewayAction = 'prepareInspection' | 'prepareLocatedInspection' | 'prepareUtmInspection' | 'prepareCompleteInspection' | 'finalizeInspection' | 'uploadPhoto' | 'getPhoto' | 'listLocations' | 'listInspections' | 'getInspection' | 'reviewInspection';
 
 export function signMessage(msg: string, secret: string): string {
   return createHmac('sha256', secret).update(msg, 'utf8').digest('hex');
@@ -66,6 +66,7 @@ const HTTP_STATUS: Record<string, number> = {
   VALIDATION_ERROR: 400,
   NOT_FOUND: 404,
   CONFLICT: 409,
+  VERSION_CONFLICT: 409,
   LOCATION_CHANGED: 409,
   PAYLOAD_TOO_LARGE: 413,
   RETRYABLE_ERROR: 503,

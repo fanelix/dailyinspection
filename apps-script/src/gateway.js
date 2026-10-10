@@ -6,7 +6,7 @@
 const SCHEMA_VERSION = 2;
 // Naikkan setiap perubahan perilaku gateway. Muncul di doGet agar kode lama yang belum di-deploy ulang (versi deployment
 // web app tidak ikut berubah saat kode di editor diganti) terlihat dari luar, tanpa rahasia.
-const GATEWAY_BUILD = '2026-10-10.1';
+const GATEWAY_BUILD = '2026-10-10.2';
 const MAX_CLOCK_SKEW_MS = 5 * 60 * 1000; // usulan; belum diukur di jaringan lapangan
 const REPLAY_TTL_SECONDS = 10 * 60; // > 2x skew agar pesan kedaluwarsa pun tidak bisa diputar ulang
 const MAX_REQUEST_CHARS = 4 * 1024 * 1024; // foto 2 MB -> base64 ~2,7 MB; sisanya margin
@@ -95,6 +95,12 @@ function lookupAction_(name) {
       return getPhoto;
     case 'listLocations':
       return listLocations;
+    case 'listInspections':
+      return listInspections;
+    case 'getInspection':
+      return getInspection;
+    case 'reviewInspection':
+      return reviewInspection;
     default:
       return null;
   }

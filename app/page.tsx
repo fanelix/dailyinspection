@@ -259,6 +259,10 @@ function InspectionForm({ db, initial, drafts, onSaved, onOpen }: { db: IDBDatab
   );
 }
 
+function HistoryLink() {
+  return <p><a href="/riwayat">Riwayat inspeksi</a></p>;
+}
+
 export default function Home() {
   const [db,setDb]=useState<IDBDatabase|null>(null),[active,setActive]=useState<Draft|null>(null),[drafts,setDrafts]=useState<DraftSummary[]>([]),[error,setError]=useState('');
   const [opening,setOpening]=useState(0),[generation,setGeneration]=useState(0);
@@ -276,6 +280,7 @@ export default function Home() {
     return ()=>{closed=true;connection?.close();};
   },[opening]);
   return <main><h1>Inspeksi Geoteknik Harian</h1>
+    <HistoryLink />
     {db && <OfflineReady db={db} />}
     {error ? <><p className="status error" role="alert">{error}</p><button onClick={()=>setOpening(n=>n+1)}>Coba penyimpanan lagi</button></> : !db || !active ? <p role="status">Memulihkan draft perangkat…</p> : <InspectionForm key={`${active.id}:${generation}`} db={db} initial={active} drafts={drafts} onSaved={async()=>setDrafts(await listDrafts(db))} onOpen={record=>{setGeneration(n=>n+1);setActive(record);}} />}
   </main>;

@@ -5,7 +5,7 @@
 // Lock hanya membungkus operasi Sheets singkat, tidak pernah transfer byte.
 
 const SHEET_COLUMNS = {
-  Inspections: ['inspection_id', 'device_id', 'inspector_name', 'observed_at', 'received_at', 'note', 'status', 'version', 'schema_version', 'template_version', 'area_id', 'checklist_json', 'sub_area', 'location_json', 'photo_manifest_json'],
+  Inspections: ['inspection_id', 'device_id', 'inspector_name', 'observed_at', 'received_at', 'note', 'status', 'version', 'schema_version', 'template_version', 'area_id', 'checklist_json', 'sub_area', 'location_json', 'photo_manifest_json', 'review_json'],
   Photos: ['photo_id', 'inspection_id', 'drive_file_id', 'status', 'size', 'mime', 'sha256', 'reserved_at', 'stored_at', 'caption'],
 };
 // Known headers verified in the existing staging DB. Keep these columns and old rows in place.
@@ -19,6 +19,10 @@ const STAGING_FIELD_NAMES = {
 };
 const MAX_PHOTO_BYTES = 2 * 1024 * 1024; // sama dengan lib/photos.ts; usulan rencana §8, belum diuji dengan foto nyata
 const MAX_PHOTOS_PER_INSPECTION = 5; // usulan rencana §8
+// ponytail: riwayat review disimpan dalam satu sel JSON dengan batas 20 entri (~50k karakter sel Sheets).
+// Pindahkan ke tab Audit terpisah bila riwayat penuh diperlukan untuk audit pilot.
+const MAX_REVIEW_HISTORY = 20;
+const MAX_HISTORY_LIMIT = 50;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 function prepareCompleteInspection(payload) {
@@ -228,6 +232,248 @@ function getPhoto(payload) {
   return { photoId: photoId, mime: rec.mime, sha256: rec.sha256, bytesBase64: Utilities.base64Encode(bytes) };
 }
 
+// ---- T6: riwayat, detail dan review ----
+
+// Aksi baca tidak pernah mengembalikan byte foto atau ID Drive; foto tetap lewat pasangan (inspeksi, foto).
+function listInspections(payload) {
+  const q = parseHistoryQuery_(payload);
+  return withLock_(function () {
+    const sh = sheet_('Inspections');
+    const layout = sheetLayout_(sh, 'Inspections');
+    const last = sh.getLastRow();
+    const counts = photoCountsByInspection_();
+    const matched = [];
+    let skipped = 0;
+    if (last >= 2) {
+      const values = sh.getRange(2, 1, last - 1, layout.columns.length).getValues();
+      values.forEach(function (row) {
+        const idIndex = layout.columns.indexOf('inspection_id');
+        const id = String(row[idIndex] == null ? '' : row[idIndex]);
+        if (!UUID_RE.test(id)) { skipped++; return; }
+        const rec = {};
+        layout.columns.forEach(function (c, i) { rec[c] = row[i]; });
+        const item = historyItem_(rec, counts[id] || 0);
+        if (q.areaId && item.areaId !== q.areaId) return;
+        if (q.status && item.status !== q.status) return;
+        const day = item.observedAt ? item.observedAt.slice(0, 10) : null;
+        if (q.from && (!day || day < q.from)) return;
+        if (q.to && (!day || day > q.to)) return;
+        matched.push(item);
+      });
+    }
+    // ponytail: pemindaian linear seluruh tab; cukup ratusan baris, pindah ke indeks/DB bila riwayat melambat (rencana §16).
+    matched.sort(function (a, b) { return String(b.observedAt || '').localeCompare(String(a.observedAt || '')); });
+    const page = matched.slice(q.offset, q.offset + q.limit);
+    return { inspections: page, matched: matched.length, skipped: skipped, hasMore: q.offset + page.length < matched.length };
+  });
+}
+
+function getInspection(payload) {
+  if (!isObject_(payload)) throw bad_('Payload harus objek');
+  const inspectionId = requireUuid_(payload.inspectionId, 'inspectionId');
+  return withLock_(function () {
+    const loaded = loadInspection_(inspectionId);
+    const rec = loaded.rec;
+    const photosSheet = sheet_('Photos');
+    const layout = sheetLayout_(photosSheet, 'Photos');
+    const last = photosSheet.getLastRow();
+    const photos = [];
+    if (last >= 2) {
+      const values = photosSheet.getRange(2, 1, last - 1, layout.columns.length).getValues();
+      const idIndex = layout.columns.indexOf('inspection_id');
+      values.forEach(function (row) {
+        if (String(row[idIndex]) !== inspectionId) return;
+        const p = {};
+        layout.columns.forEach(function (c, i) { p[c] = row[i]; });
+        if (!p.reserved_at) return; // baris skema lama tanpa reservasi gateway bukan foto T2+
+        photos.push({
+          photoId: String(p.photo_id), status: String(p.status), sha256: String(p.sha256 || ''),
+          size: p.size === '' || p.size == null ? null : Number(p.size), mime: String(p.mime || ''), caption: String(p.caption || ''),
+          reservedAt: toIso_(p.reserved_at), storedAt: p.stored_at ? toIso_(p.stored_at) : null,
+        });
+      });
+    }
+    return {
+      inspection: {
+        inspectionId: inspectionId, inspectorName: String(rec.inspector_name == null ? '' : rec.inspector_name),
+        observedAt: toIso_(rec.observed_at), receivedAt: toIso_(rec.received_at),
+        note: String(rec.note == null ? '' : rec.note), status: String(rec.status == null ? '' : rec.status),
+        version: Number(rec.version) || 0, schemaVersion: rec.schema_version === '' ? null : Number(rec.schema_version),
+        templateVersion: String(rec.template_version == null ? '' : rec.template_version),
+        areaId: String(rec.area_id == null ? '' : rec.area_id), subArea: String(rec.sub_area == null ? '' : rec.sub_area),
+        checklist: tryJson_(rec.checklist_json), location: tryJson_(rec.location_json),
+        photoManifest: tryJson_(rec.photo_manifest_json) || [], reviews: parseReviews_(rec.review_json), photos: photos,
+      },
+    };
+  });
+}
+
+function reviewInspection(payload) {
+  const v = parseReview_(payload);
+  return withLock_(function () {
+    const loaded = loadInspection_(v.inspectionId);
+    const rec = loaded.rec;
+    const reviews = parseReviews_(rec.review_json);
+    const existing = reviews.find(function (e) { return e.reviewId === v.review.reviewId; });
+    // Replay idempoten: reviewId sama mengembalikan acknowledgment yang sama tanpa menulis.
+    if (existing) return reviewResult_(rec, existing);
+    if (String(rec.status) !== 'submitted') throw new GatewayError('CONFLICT', 'Review hanya untuk inspeksi yang sudah terkirim');
+    const version = Number(rec.version);
+    if (!Number.isSafeInteger(version) || version < 1) throw new GatewayError('INTERNAL_ERROR', 'Versi rekaman tidak valid');
+    if (version !== v.expectedVersion) throw new GatewayError('VERSION_CONFLICT', 'Versi inspeksi berubah; muat versi terbaru sebelum menyimpan review');
+    const checklist = tryJson_(rec.checklist_json);
+    const findingIds = checklist && Array.isArray(checklist.answers)
+      ? checklist.answers.filter(function (a) { return a && a.answer === 'finding'; }).map(function (a) { return a.itemId; }) : [];
+    v.review.findings.forEach(function (f) {
+      if (findingIds.indexOf(f.itemId) < 0) throw bad_('Item temuan tidak ada pada inspeksi ini: ' + f.itemId);
+    });
+    const now = new Date().toISOString();
+    const entry = {
+      reviewId: v.review.reviewId, reviewerName: v.review.reviewerName, note: v.review.note,
+      reviewedAt: now, version: version + 1, findings: v.review.findings,
+    };
+    rec.review_json = JSON.stringify(reviews.concat([entry]).slice(-MAX_REVIEW_HISTORY));
+    rec.version = String(version + 1);
+    rec.updated_at = now;
+    writeRow_(loaded.sheet, loaded.row, recordValues_(loaded.sheet, 'Inspections', rec));
+    return reviewResult_(rec, entry);
+  });
+}
+
+function reviewResult_(rec, entry) {
+  return { inspectionId: String(rec.inspection_id), status: String(rec.status), version: Number(rec.version) || 0, review: entry };
+}
+
+function parseHistoryQuery_(payload) {
+  const p = payload == null ? {} : payload;
+  if (!isObject_(p)) throw bad_('Payload harus objek');
+  const out = { areaId: null, status: null, from: null, to: null, limit: 20, offset: 0 };
+  if (p.areaId != null && p.areaId !== '') {
+    if (!CHECKLISTS.areas.some(function (a) { return a.id === p.areaId; })) throw bad_('Area tidak dikenal');
+    out.areaId = p.areaId;
+  }
+  if (p.status != null && p.status !== '') {
+    if (p.status !== 'uploading' && p.status !== 'submitted') throw bad_('Status tidak dikenal');
+    out.status = p.status;
+  }
+  ['from', 'to'].forEach(function (key) {
+    const value = p[key];
+    if (value == null || value === '') return;
+    if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) throw bad_('Tanggal ' + key + ' harus YYYY-MM-DD');
+    out[key] = value;
+  });
+  if (out.from && out.to && out.from > out.to) throw bad_('Rentang tanggal terbalik');
+  if (p.limit != null && p.limit !== '') {
+    if (!Number.isSafeInteger(p.limit) || p.limit < 1 || p.limit > MAX_HISTORY_LIMIT) throw bad_('limit harus 1-' + MAX_HISTORY_LIMIT);
+    out.limit = p.limit;
+  }
+  if (p.offset != null && p.offset !== '') {
+    if (!Number.isSafeInteger(p.offset) || p.offset < 0) throw bad_('offset tidak valid');
+    out.offset = p.offset;
+  }
+  return out;
+}
+
+function parseReview_(payload) {
+  if (!isObject_(payload)) throw bad_('Payload harus objek');
+  const inspectionId = requireUuid_(payload.inspectionId, 'inspectionId');
+  if (!Number.isSafeInteger(payload.expectedVersion) || payload.expectedVersion < 1) throw bad_('expectedVersion tidak valid');
+  const r = payload.review;
+  if (!isObject_(r)) throw bad_('Review wajib diisi');
+  const reviewId = requireUuid_(r.reviewId, 'reviewId');
+  const reviewerName = typeof r.reviewerName === 'string' ? r.reviewerName.trim() : '';
+  if (!reviewerName || reviewerName.length > 100) throw bad_('Nama reviewer wajib diisi (maksimal 100 karakter)');
+  const note = r.note == null ? '' : r.note;
+  if (typeof note !== 'string' || note.length > 2000) throw bad_('Catatan review tidak valid (maksimal 2000 karakter)');
+  const findings = r.findings == null ? [] : r.findings;
+  if (!Array.isArray(findings) || findings.length > 20) throw bad_('Daftar temuan review tidak valid');
+  const seen = {};
+  const parsed = findings.map(function (f) {
+    if (!isObject_(f) || typeof f.itemId !== 'string' || !f.itemId) throw bad_('Item temuan review tidak valid');
+    if (seen[f.itemId]) throw bad_('Item temuan review ganda: ' + f.itemId);
+    seen[f.itemId] = true;
+    if (f.status !== 'open' && f.status !== 'closed') throw bad_('Status temuan harus open atau closed');
+    const fnote = f.note == null ? '' : f.note;
+    if (typeof fnote !== 'string' || fnote.length > 500) throw bad_('Catatan temuan maksimal 500 karakter');
+    return { itemId: f.itemId, status: f.status, note: fnote };
+  });
+  return { inspectionId: inspectionId, expectedVersion: payload.expectedVersion, review: { reviewId: reviewId, reviewerName: reviewerName, note: note, findings: parsed } };
+}
+
+function parseReviews_(raw) {
+  const parsed = tryJson_(raw);
+  if (!Array.isArray(parsed)) return [];
+  return parsed
+    .filter(function (e) { return isObject_(e) && typeof e.reviewId === 'string' && typeof e.reviewerName === 'string' && Array.isArray(e.findings); })
+    .map(function (e) {
+      return {
+        reviewId: e.reviewId, reviewerName: e.reviewerName, note: typeof e.note === 'string' ? e.note : '',
+        reviewedAt: toIso_(e.reviewedAt) || String(e.reviewedAt || ''), version: Number(e.version) || 0,
+        findings: e.findings
+          .filter(function (f) { return isObject_(f) && typeof f.itemId === 'string' && (f.status === 'open' || f.status === 'closed'); })
+          .map(function (f) { return { itemId: f.itemId, status: f.status, note: typeof f.note === 'string' ? f.note : '' }; }),
+      };
+    });
+}
+
+function historyItem_(rec, photoCount) {
+  const id = String(rec.inspection_id);
+  const checklist = tryJson_(rec.checklist_json);
+  const reviews = parseReviews_(rec.review_json);
+  const location = tryJson_(rec.location_json);
+  const findings = checklist && Array.isArray(checklist.answers)
+    ? checklist.answers.filter(function (a) { return a && a.answer === 'finding'; }) : [];
+  let open = 0, closed = 0;
+  findings.forEach(function (f) {
+    let status = null;
+    for (let i = reviews.length - 1; i >= 0 && status == null; i--) {
+      const entry = reviews[i].findings.find(function (x) { return x.itemId === f.itemId; });
+      if (entry) status = entry.status;
+    }
+    if (status === 'closed') closed++; else if (status === 'open') open++;
+  });
+  const latest = reviews.length ? reviews[reviews.length - 1] : null;
+  const object = location && isObject_(location.object) ? location.object : null;
+  return {
+    inspectionId: id, inspectorName: String(rec.inspector_name == null ? '' : rec.inspector_name), observedAt: toIso_(rec.observed_at), receivedAt: toIso_(rec.received_at),
+    areaId: String(rec.area_id == null ? '' : rec.area_id), subArea: String(rec.sub_area == null ? '' : rec.sub_area), status: String(rec.status == null ? '' : rec.status),
+    version: Number(rec.version) || 0, reviewRequired: !!(checklist && checklist.reviewRequired), findings: { total: findings.length, open: open, closed: closed },
+    reviews: reviews.length, lastReviewedAt: latest ? latest.reviewedAt : null, photoCount: photoCount,
+    location: object && isFinite(object.latitude) && isFinite(object.longitude) ? { latitude: object.latitude, longitude: object.longitude } : null,
+  };
+}
+
+function photoCountsByInspection_() {
+  const sh = sheet_('Photos');
+  const layout = sheetLayout_(sh, 'Photos');
+  const last = sh.getLastRow();
+  const counts = {};
+  if (last >= 2) {
+    const values = sh.getRange(2, 1, last - 1, layout.columns.length).getValues();
+    const idIndex = layout.columns.indexOf('inspection_id');
+    values.forEach(function (row) {
+      const id = String(row[idIndex] == null ? '' : row[idIndex]);
+      if (id) counts[id] = (counts[id] || 0) + 1;
+    });
+  }
+  return counts;
+}
+
+function tryJson_(raw) {
+  if (typeof raw !== 'string' || raw === '') return null;
+  try { return JSON.parse(raw); } catch (err) { return null; }
+}
+
+function toIso_(value) {
+  if (value instanceof Date) return isNaN(value.getTime()) ? null : value.toISOString();
+  if (typeof value === 'string' && value.trim() !== '') {
+    if (/^\d{4}-\d{2}-\d{2}T/.test(value)) return value;
+    const d = new Date(value);
+    return isNaN(d.getTime()) ? null : d.toISOString();
+  }
+  return null;
+}
+
 // ---- Drive ----
 
 function putToDrive_(fileId, bytes, name) {
@@ -287,7 +533,7 @@ function sheetLayout_(sh, name) {
   const staging = base.every(function (value, i) { return actual[i] === value; });
   const fields = SHEET_COLUMNS[name].map(function (c) { return staging ? STAGING_FIELD_NAMES[name][c] || c : c; });
   const columns = staging ? base.concat(fields.filter(function (c) { return base.indexOf(c) < 0; })) : SHEET_COLUMNS[name];
-  const lengths = staging ? (name === 'Inspections' ? [17, 22, 23, 24, 25] : [10, 14, 15]) : name === 'Inspections' ? [8, 12, 13, 14, 15] : [9, 10];
+  const lengths = staging ? (name === 'Inspections' ? [17, 22, 23, 24, 25, 26] : [10, 14, 15]) : name === 'Inspections' ? [8, 12, 13, 14, 15, 16] : [9, 10];
   if (lengths.indexOf(actual.length) < 0 || !actual.every(function (value, i) { return value === columns[i]; })) {
     throw new GatewayError('INTERNAL_ERROR', 'Header ' + name + ' tidak sesuai; periksa struktur tab sebelum menulis');
   }
