@@ -1,5 +1,7 @@
 # dailyinspection
 
+**Status terakhir, 10 Oktober 2026:** pekerjaan sudah sampai T5 di `codex/t5-drafts`, PR #4 draft. Gateway aktif yang benar sudah ditemukan: `gateway.gs` T4 build `2026-10-10.1`, tetapi `storage.gs` masih persis T3 dan tidak memiliki `prepareCompleteInspection`, sehingga pengiriman mendapat `RETRYABLE_ERROR`. Pengguna kemudian melaporkan sudah mengganti storage dan deploy versi terbaru. **Pengiriman setelah pembaruan itu belum diverifikasi**; langkah berikutnya adalah mengirim ulang antrean sintetis yang sama dan memeriksa finalisasi, dua foto/checksum, serta tidak ada duplikat. Rekap lengkap dan urutan lanjut: [`docs/handoff.md`](docs/handoff.md), bagian paling atas. Jangan mulai T6/T7 atau merge/promote Production.
+
 ## T5 — draft, pemulihan dan pencatatan offline (2026-10-10)
 
 Pengguna sudah memperbarui Apps Script dan meminta melanjutkan. T5 dikerjakan di `codex/t5-drafts`, bertumpuk di atas T4 `ae34c68`. T6/T7 belum dikerjakan. Rencana: [`docs/superpowers/plans/2026-10-10-t5-drafts.md`](docs/superpowers/plans/2026-10-10-t5-drafts.md).
@@ -21,7 +23,7 @@ Pengguna sudah memperbarui Apps Script dan meminta melanjutkan. T5 dikerjakan di
 
 **Batas verifikasi:** quota/transaction abort, acknowledgment hilang, pengirim bersamaan, master berubah, aset gagal dan pergantian identitas bundle diuji lewat checks boundary, bukan perangkat Android nyata. Mode pesawat, eviction OS, upgrade cache nyata lintas deployment, kamera/GPS Android serta finalisasi dua foto pada Google belum terbukti. Ini bukti implementasi T5, belum acceptance lapangan; T6/T7 dan Production belum dilanjutkan.
 
-**Verifikasi T4 Google asli, 2026-10-10:** Kirim ulang attempt dua JPEG sintetis pada preview T4 kini mencapai gateway, tetapi mendapat `RETRYABLE_ERROR` (galat Apps Script generik). Rentang staging `Inspections!A1:Y80` dan `Photos!A1:O80` sebelum/sesudah identik: 29/17 baris termasuk header, header belum bertambah Y/O. Tidak ada finalisasi atau byte T4 yang dapat dinyatakan berhasil. Proyek Apps Script yang terlihat pada akun cloud browser masih schema 1 dan dua file lama; tidak terbukti proyek itu deployment gateway aktif. URL gateway di Vercel bertipe Secret/write-only, tidak diubah atau dirotasi. Untuk diagnosis perlu pesan Execution log **dari deployment gateway aktif**; kode tidak ditebak atau diganti pada proyek yang tidak cocok. Dua foto/attempt T4 tetap di halaman.
+**Verifikasi T4 Google asli sebelum perbaikan gateway, 2026-10-10:** Kirim ulang attempt dua JPEG sintetis mendapat `RETRYABLE_ERROR`. Rentang staging `Inspections!A1:Y80` dan `Photos!A1:O80` sebelum/sesudah identik: 29/17 baris termasuk header, header belum bertambah Y/O. Diagnosis berikutnya pada proyek gateway yang benar membuktikan storage masih source T3 sementara gateway sudah T4. Pengguna kini melaporkan telah mengganti storage dan deploy terbaru; belum ada pembacaan setelahnya yang membuktikan finalisasi/foto berhasil. URL gateway di Vercel bertipe Secret/write-only, tidak diubah atau dirotasi. Ikuti verifikasi terbaru di bagian atas handoff, bukan meminta failed doPost lagi: exception yang ditangkap dapat berstatus Completed.
 
 
 Aplikasi web inspeksi geoteknik harian (HP/tablet Android). Rencana dan keputusan: [`docs/plan.md`](docs/plan.md). Pedoman kerja agent: [`AGENTS.md`](AGENTS.md).

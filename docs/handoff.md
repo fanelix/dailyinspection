@@ -1,4 +1,69 @@
-# Serah terima sesi — 2026-10-09 (T3 lokasi objek)
+# Serah terima sesi — 2026-10-10 (T5 dan verifikasi gateway)
+
+## Status terakhir untuk sesi pengganti
+
+**Mulai dari `codex/t5-drafts`, bukan branch awal T2.** Repo: https://github.com/fanelix/dailyinspection. Baca `AGENTS.md`, `CLAUDE.md`, `docs/plan.md`, dokumen ini, dan `README.md`. Bagian ini mengungguli status rollout historis di bawah. Source produk terbaru `495b33f`; commit dokumentasi sebelum rekap ini `f336465`.
+
+**Pesan terakhir pengguna, 10 Oktober 2026 pukul 10:50 WIB:** “storage gs sudah saya ganti, dan sudah saya deploy yang terbaru.” Pengguna meminta rekap untuk pindah sesi. Pembaruan tersebut adalah laporan pengguna; isi editor, nomor versi deployment baru, dan pengiriman sesudahnya **belum diverifikasi** oleh agent. Jangan menyatakan finalisasi Google berhasil sampai acknowledgment, baris Sheets, dan kedua foto benar-benar diperiksa.
+
+### Diagnosis terakhir dan perbaikan yang sudah dilaporkan
+
+- Proyek gateway yang benar akhirnya ditemukan: **Daily Geotechnical Inspection**, memakai akun perusahaan. Tautan editor telah diberikan pengguna dalam percakapan. Proyek yang sebelumnya terlihat pada akun lain bukan dasar diagnosis terbaru.
+- Sebelum pembaruan terakhir, deployment aktif **Version 7**, dibuat 10 Oktober pukul 09:16 WIB. `gateway.gs` sudah build **`2026-10-10.1`**, schema 2, dan memanggil `prepareCompleteInspection`; `storage.gs` masih persis source T3 `efe3c18`, tanpa fungsi itu maupun kolom manifest/keterangan. Salinan kode editor dibandingkan dengan source Git, bukan sekadar melihat nama file.
+- Ketidakcocokan tersebut menjelaskan `RETRYABLE_ERROR` sebelum write. Status `doPost` **Completed** bukan keberhasilan aplikasi: exception ditangkap gateway dan dikembalikan sebagai payload error. Execution log pada baris doPost tidak menampilkan rincian yang diminta; jangan meminta pengguna mencari failed doPost lagi sebagai satu-satunya jalan.
+- Agent menyiapkan source `apps-script/src/storage.js` T4 yang sudah diuji dan mencadangkan source lama. Upaya penggantian melalui browser ditolak peninjauan persetujuan otomatis sebelum perubahan diterapkan. Pengguna kemudian mengganti `storage.gs` dan deploy sendiri, sesuai pesan terakhir di atas.
+- Source `storage.js` T4 yang disiapkan identik dengan repo: SHA-256 **`9dd406ad7695b69e59c25c4c63df2e6903d3760a94535c1ac4cf136c28269690`**. T5 tidak memerlukan pembaruan Apps Script tambahan. Empat file T3 (`checklist`, `location`, `locations`, `projection`) tetap baseline; jangan mengganti Script Properties, manifest, Spreadsheet ID, atau URL deployment tanpa kebutuhan yang terbukti.
+
+### Pekerjaan dan keputusan yang sudah tersimpan
+
+| Tahap | Hasil |
+| --- | --- |
+| T0/T1 | Baseline integrasi Next.js/Vercel → Apps Script → Sheets/Drive sudah tersedia. Uji upload, baca foto, retry tanpa duplikat dan penolakan pesan tanpa tanda tangan lulus; uji kamera/galeri Android dasar dilaporkan pengguna. |
+| T2 | Tujuh area, enam item checklist usulan per area, nama inspector teks manual, sub-area teks manual untuk semua area, temuan dan validasi, template berversi. Jawaban awal kosong, tidak dianggap “Tidak ada temuan”. |
+| Kompatibilitas staging | Memakai tabel/kolom yang sudah ada di **Geotech Inspection Staging DB**; alias header dan kolom tambahan bersifat additif. Tidak mengganti tab atau menghapus baris lama. |
+| T3 | Lokasi objek terpisah dari GPS petugas; pin peta, koordinat manual, lokasi master dan konfirmasi snapshot. GeoJSON WGS84 `[longitude, latitude]`. Master yang masih kosong tidak diisi contoh. |
+| Revisi UTM | Pemilihan zona/belahan dan datum WGS84, DGN95, ID74; angka asli serta CRS/operasi disimpan. DGN95/ID74 dalam cakupan Indonesia; SRGI2013/epoch dan grid/RL belum didukung. Uji nyata satu inspeksi ID74 50S tanpa foto beserta retry berhasil di Google. |
+| T4 | Hingga lima foto terkompresi, keterangan, relasi foto ke temuan, prepare → upload → finalize, manifest immutable, pemeriksaan ukuran/hash/status, retry tanpa duplikat. Implementasi dan checks selesai; finalisasi dua foto Google masih perlu uji setelah deploy terakhir. |
+| T5 | Autosave IndexedDB, pemulihan form/blob/keterangan/UTM/tautan temuan, antrean immutable, pengiriman saat app aktif, Web Locks dan konflik revisi dua tab, persiapan shell/aset/template/master tujuh area untuk pencatatan offline. |
+| T6/T7 | Belum dikerjakan: riwayat/review/ekspor lengkap, acceptance Android/lapangan, backup/restore dan rollout produksi. |
+
+Area tetap **Pit, Waste Dump, LGSP, Topsoil Stockpile, Sedimen Sump, DAM, Heap Leach**. Checklist berstatus **usulan**, template `2026-10-09.draft1`, schema 2. Empat jawaban: Tidak ada temuan / Ada temuan / Tidak diperiksa / Tidak berlaku. Temuan wajib jenis/deskripsi serta foto terkait atau alasan tanpa foto; tanpa bukti foto ditandai perlu review. Tidak mengarang ambang geoteknik atau menyamakan form dengan penetapan kestabilan.
+
+Keputusan akses terbaru: **tanpa login/aktivasi perangkat**, nama petugas manual. Pengguna meminta mengabaikan pekerjaan izin foto. Jangan memulihkan login, mengganti izin Drive/foto, atau memperluas lingkup tersebut. File Drive tidak dibuat publik oleh kode; pasangan ID inspeksi+foto adalah kunci akses dan tidak boleh dicatat/dipublikasikan.
+
+### Branch, PR, deployment, dan bukti pengujian
+
+| Urutan | Branch | PR draft | Source penting |
+| --- | --- | --- | --- |
+| Baseline | `claude/eager-carson-bqb25q` | — | T0/T1; titik awal T2 `50318a7` |
+| T2 | `codex/t2-checklists` | [#1](https://github.com/fanelix/dailyinspection/pull/1) | `9979a49` setelah form, sub-area dan kompatibilitas staging |
+| T3 + UTM | `codex/t3-locations` | [#2](https://github.com/fanelix/dailyinspection/pull/2) | produk UTM `3616b33`, dokumentasi `efe3c18` |
+| T4 | `codex/t4-finalization` | [#3](https://github.com/fanelix/dailyinspection/pull/3) | produk `ab95974`, dokumentasi `ae34c68` |
+| T5 aktif | `codex/t5-drafts` | [#4](https://github.com/fanelix/dailyinspection/pull/4) | produk `495b33f`, dokumentasi sebelum rekap `f336465` |
+
+PR bertumpuk; PR #4 berbasis `codex/t4-finalization`. Belum ada merge atau promosi Production; jangan menyamakan preview T5 dengan Production yang masih baseline T1 pada pemeriksaan terakhir. Preview T5 terakhir terverifikasi Ready: https://dailyinspection-git-codex-t5-drafts-fanelixs-projects.vercel.app/.
+
+- Pemeriksaan terakhir source produk: **65/65 checks**, typecheck Next/Apps Script, sinkronisasi generator dan build produksi lulus. Review independen selesai dan temuan penting diperbaiki. `fake-indexeddb@6.2.5` hanya devDependency; proyeksi memakai Proj4js `2.22.0`.
+- Cloud browser T5 membuktikan reload dua JPEG sintetis 800×600 beserta keterangan, UTM parsial tetap belum terkonfirmasi, UTM terkonfirmasi pulih, tautan ke temuan pulih, konflik dua tab tidak menimpa, “Muat versi tersimpan” berhasil, dan indikator **Siap untuk pencatatan offline** muncul setelah persiapan minimum.
+- Pengiriman antrean sebelum perbaikan gateway gagal; reload tetap memulihkan kedua foto, ID, payload dan antrean. Tidak ada status Terkirim/pembersihan blob palsu. Baseline staging terakhir terukur: **Inspections 29 baris/24 kolom**, **Photos 17 baris/14 kolom**, termasuk header; sebelum/sesudah kiriman gagal identik. Ini baseline sebelum deployment terakhir pengguna, bukan pembacaan sesudahnya.
+- Belum terbukti: finalisasi dua foto pada Google setelah pembaruan, kamera/GPS dan mode pesawat Android untuk alur T3–T5, eviction/quota nyata, upgrade cache lintas deployment nyata, serta byte unduhan GeoJSON aktual. Checks tiruan tidak menggantikan uji itu.
+- Draft hanya tersedia pada **browser dan origin yang sama**; pindah URL preview/Production atau perangkat tidak memindahkan antrean. Basemap OSM memerlukan jaringan. Upload tidak dijanjikan berjalan ketika Android menutup app. Jangan menghapus data situs atau mengganti origin saat hendak menguji antrean yang sudah ada.
+
+### Langkah pertama sesi selanjutnya
+
+1. Checkout branch `codex/t5-drafts` terbaru, baca dokumen wajib di atas. **Fokus verifikasi T4/T5 setelah deployment, belum mulai T6/T7.**
+2. Pastikan proyek gateway yang benar memuat `prepareCompleteInspection` dan `finalizeInspection` di storage, gateway build `2026-10-10.1`, serta deployment aktif memakai versi yang baru. Jangan mengganti gateway URL/environment hanya karena Script sudah deploy.
+3. Pada **origin preview T5 yang sama**, pulihkan antrean **Uji T5 sintetis** yang sudah ada bila sesi browser masih tersedia; dua foto kuning/biru bertaut ke satu temuan, lokasi sintetis ID74 50S terkonfirmasi. Tekan **Kirim yang tertunda**. Gunakan ID/payload yang sama; jangan membuat duplikat untuk mengatasi error. Bila sesi lama tidak tersedia, jelaskan keterbatasan dan buat uji sintetis baru secara eksplisit.
+4. Periksa satu record `submitted` revisi 2, tepat dua foto `stored`, SHA-256/ukuran/manifest/keterangan dan hubungan temuan cocok. Header tambahan yang diharapkan: **Inspections!Y `photo_manifest_json`**, **Photos!O `caption`**. Kolom/baris lama tetap utuh. Baseline 29/17 dapat menjadi 30/19 bila hanya uji dua foto tersebut menambah data; jangan memaksakan hitungan jika ada write pengguna.
+5. Baca kedua foto melalui aplikasi dan pastikan berhasil didekode; retry identik tidak menambah file/baris/revisi. Hanya setelah acknowledgment finalisasi valid, metadata acknowledgment tersimpan dan byte antrean boleh dibersihkan dalam transaksi lokal.
+6. Catat hasil nyata, commit frontend dan build/versi gateway di README/handoff. Jika masih error, telusuri payload error dan kode deployment aktif. Jangan menyimpulkan berhasil dari HTTP 200, status Completed, atau checks lokal.
+7. Setelah verifikasi tersebut, laporkan batas uji Android/lapangan dan tunggu arahan tahap berikutnya. Tidak ada izin untuk merge/promote Production atau mengerjakan T6/T7 dalam rekap ini.
+
+Untuk pemeriksaan kode jika ada perubahan berikutnya: `npm ci`, `npm run check`, `npm run build`; generator checklist/lokasi mengikuti CLAUDE.md. Rekap ini hanya mengubah dokumentasi, sehingga tidak mengulang checks produk yang sudah lulus pada source yang sama.
+
+---
+
+Bagian berikut adalah riwayat implementasi dan pengujian; status gateway sebelum diagnosis/pembaruan terakhir di atas tidak lagi menjadi instruksi terbaru.
 
 ## T5 — draft, pemulihan dan pencatatan offline (2026-10-10)
 
