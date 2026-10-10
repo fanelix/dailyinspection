@@ -1,5 +1,30 @@
 # Serah terima sesi — 2026-10-10 (T5 dan verifikasi gateway)
 
+## T7 — uji browser, backup/restore, dan rollout (2026-10-10, sesi ini)
+
+**Status:** sebagian. Pengguna memilih T7 setelah rekap T6. Tidak ada merge, promosi Production, perubahan Apps Script atau Vercel, dan tidak ada penulisan ke Google.
+
+**Dikerjakan:**
+- `checks/t7-browser.mjs`: harness Chromium headless nyata (Playwright 1.56.1 global, Chromium `/opt/pw-browsers`) dengan gateway tiruan dan `next start`. Di luar `npm run check`. Hasil: **20/20 lulus**, exit 0, dua kali berturut-turut.
+- `docs/runbook.md`: gerbang Production G1–G7, checklist uji Android (15 skenario), prosedur backup/restore, rollback, dan keputusan terbuka.
+- `npm ci`, `npm run check` (74/74), dan `npm run build` lulus di Node v22.22.0.
+
+**Temuan yang mengubah rencana:**
+1. **Batas kuota CDP tidak memicu galat tulis** di Chromium ini. `navigator.storage.estimate()` melapor kuota 1 byte, tetapi tulis IndexedDB tetap berhasil. Jalur galat kuota diuji dengan suntikan `QuotaExceededError` pada `IDBObjectStore.put`, dan ditandai sebagai suntikan.
+2. **Gateway T5 tidak bisa membaca header Inspections 26 kolom.** Dari `git show 5d65e0d:apps-script/src/storage.js`, `sheetLayout_` hanya menerima 17–25 kolom. Rollback gateway ke T5 setelah kolom `review_json` (Z) ada menolak semua baca dan tulis Inspections. Ini gagal-tertutup, tetapi layanan berhenti. Dari kode, belum diuji Google.
+3. **Frontend T5 memakai aksi yang seluruhnya ada di allowlist gateway T6.** Jadi pasangan frontend T5 + gateway T6 kompatibel dari kode.
+4. **Frontend T1 yang disebut handoff masih di Production tidak kompatibel dengan gateway T2 ke atas.** Rollback ke T1 bukan pilihan.
+5. **Galat di harness awal adalah race harness**, bukan bug produk. Harness kembali online saat percobaan ulang offline masih berjalan, dan pengecekan dilakukan sebelum daftar termuat. Keduanya sudah diperbaiki di harness.
+6. **Satu galat halaman tak tertangani** selama uji berasal dari suntikan sendiri (`QuotaExceededError` sinkron pada `put`). Ini bukan galat produk; kuota IndexedDB nyata menggagalkan transaksi secara asinkron.
+
+**Belum (butuh pengguna atau perangkat):** Android nyata (`docs/runbook.md` bagian 3), mode pesawat OS, eviksi dan kuota OS, GPS dan kamera, Sheets/Drive/Apps Script nyata (tidak ada `GATEWAY_URL` atau secret di sesi ini), backup/restore, drill rollback di staging, pilot, dan Production.
+
+**Keputusan terbuka:** G1–G7 di runbook bagian 1; angka kapasitas dan batas laju; pemilik dan frekuensi backup; lokasi salinan foto yang independen; branch Production dan urutan merge PR #1–#5; izin menjalankan uji restore dan drill rollback di staging.
+
+**Branch:** `claude/zen-heisenberg-kcgjpu` (branch kerja yang ditetapkan sesi) belum ada di origin sebelum sesi ini. Branch itu dibuat dari `codex/t6-history` (`a5d35aa`) dan memuat riwayat T0–T6 plus T7. `codex/t6-history` tidak diubah. Tidak ada force push. Trailer commit tidak menyebut nama model.
+
+**Berikutnya:** pengguna menjalankan checklist Android dan melaporkan hasil per nomor, lalu memutuskan G3, G4, dan G5. Drill rollback atau uji restore di staging hanya dijalankan bila pengguna memberi izin. Tanpa izin itu, T7 berhenti di sini.
+
 ## T6 dan verifikasi riwayat/review/ekspor — 10 Oktober 2026 (sesi Codespace)
 
 **Status:** T6 selesai dan terverifikasi terhadap Google. Branch `codex/t6-history` (produk `8c4d134`, docs menyusul), PR [#5](https://github.com/fanelix/dailyinspection/pull/5) draft bertumpuk di atas PR #4. Gateway aktif **`build 2026-10-10.2`** (pembaruan dua file: `gateway`, `storage`). Foto penutupan **ditunda** atas keputusan pengguna; tidak mengubah invarian manifest T4.

@@ -2,6 +2,22 @@
 
 **Status terakhir, 10 Oktober 2026:** pekerjaan sudah sampai **T6** di `codex/t6-history` (produk `8c4d134`), PR [#5](https://github.com/fanelix/dailyinspection/pull/5) draft bertumpuk di atas PR #4 (T5, `5d65e0d`). Gateway aktif sudah **`build 2026-10-10.2`** (dua file: `gateway`, `storage`). Verifikasi nyata T4/T5 dan T6 terhadap Google sudah dijalankan dari Codespace: riwayat menampilkan record T5 sintetis (revisi 2, 2 foto), review menyimpan **revisi 3** dengan temuan ditutup, versi basi ditolak `VERSION_CONFLICT` 409, replay `reviewId` sama idempoten, kedua foto dibaca ulang dengan checksum = manifest, ekspor CSV/GeoJSON benar (`[117.000261105488, -1.9999997634890758]`). Sisa pemeriksaan manual pengguna: kolom **`Inspections!Z review_json`** pada baris `Uji T5 verifikasi 20261010043340` (lihat `docs/handoff.md`). Foto penutupan ditunda atas keputusan pengguna. Android/lapangan, T7, dan promosi Production belum; semua PR tetap draft.
 
+## T7 — uji browser nyata, runbook, dan rollout (2026-10-10)
+
+Status: **sebagian**. `checks/t7-browser.mjs` menjalankan Chromium headless nyata terhadap `next start` dengan gateway Apps Script tiruan. Ia **tidak** masuk `npm run check`. Jalankan setelah `npm run build`:
+
+```
+PLAYWRIGHT_MODULE=<path modul playwright> node checks/t7-browser.mjs
+```
+
+Hasil terakhir: **20/20 pemeriksaan lulus**. Mencakup mode pesawat (simpan, reload, kirim gagal lalu sukses tepat sekali), dua tab dengan Web Locks, jalur galat kuota, dan eviksi IndexedDB (antrean hilang tanpa klaim terkirim, tanpa crash).
+
+- **Batas kuota:** batas kuota CDP tidak memicu galat tulis IndexedDB di Chromium ini, walau `navigator.storage.estimate()` melapor kuota 1 byte. Jalur galat diuji dengan **suntikan** `QuotaExceededError`, bukan kuota OS nyata.
+- **Belum terbukti:** Android nyata, mode pesawat OS, eviksi dan kuota OS, GPS/kamera, Sheets/Drive/Apps Script nyata, backup/restore, dan volume pilot.
+- **Rollback:** gateway T5 menolak header Inspections 26 kolom (`review_json`). Jangan rollback gateway ke sebelum T6 setelah kolom Z ada. Frontend T5 dengan gateway T6 kompatibel dari kode, belum diuji Google.
+
+Checklist uji Android, prosedur backup/restore, gerbang Production G1–G7, dan rollback ada di [`docs/runbook.md`](docs/runbook.md). Tidak ada merge atau promosi Production; semua PR tetap draft.
+
 ## T6 — riwayat, review dan ekspor (2026-10-10)
 
 Dikerjakan di `codex/t6-history` bertumpuk di atas T5 (`5d65e0d`); PR [#5](https://github.com/fanelix/dailyinspection/pull/5) draft. Foto penutupan **ditunda** atas keputusan pengguna (10 Oktober); invarian manifest T4 tidak diubah. Rencana: [`docs/superpowers/plans/2026-10-10-t6-history.md`](docs/superpowers/plans/2026-10-10-t6-history.md).
