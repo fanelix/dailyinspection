@@ -18,6 +18,8 @@ Hasil terakhir: **20/20 pemeriksaan lulus**. Mencakup mode pesawat (simpan, relo
 
 **Android (2026-10-10):** pengguna melaporkan skenario 1–15 lulus di Oppo Find X8 dengan Chrome, pada preview T6. Sheets staging mengonfirmasi satu kiriman end-to-end: satu inspeksi `submitted`, satu foto dengan checksum sama dengan manifest, tanpa duplikat. Browser tidak memberi penyimpanan persisten.
 
+**Production (2026-10-10):** rilis T0–T7 (`main` `40ff92c`, PR #6) aktif di Production setelah dipromosikan manual di Vercel. Smoke test lulus: satu inspeksi `submitted` dan satu foto dengan checksum sama dengan manifest, tanpa duplikat. Pilot 3–5 hari (G7) belum.
+
 Checklist uji Android, prosedur backup/restore, gerbang Production G1–G7, dan rollback ada di [`docs/runbook.md`](docs/runbook.md). Tidak ada merge atau promosi Production; semua PR tetap draft.
 
 ## T6 — riwayat, review dan ekspor (2026-10-10)

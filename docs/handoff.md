@@ -47,12 +47,20 @@ Akibat G5 ada di `docs/runbook.md` bagian 1a:
 - **Izin foto:** dibiarkan `anyone`/writer atas keputusan pengguna.
 - **Merge:** PR rilis #6 di-merge ke `main` dengan merge commit.
 
-**Berikutnya:**
-1. Pengguna mengatur Vercel Production Branch = `main` dan memeriksa env Production.
-2. Rotasi `GATEWAY_HMAC_SECRET`, bila disetujui.
-3. Smoke test satu inspeksi berlabel `Uji produksi <tanggal>`.
+**Production aktif (2026-10-10):**
+- `main` `40ff92c` dipromosikan ke Production oleh pengguna. Deployment `main` berstatus "Production Staged" sampai dipromosikan manual.
+- Smoke test "Uji produksi 2026-10-10" lulus (dibaca agent di Sheets): +1 inspeksi `submitted` revisi 2, +1 foto `stored` dengan checksum sama dengan manifest, tanpa duplikat.
+- PR #1–#5 ditutup sebagai superseded.
+- Release `v2026.10.10` dibuat pengguna lewat GitHub Releases (diverifikasi agent; target `main`). Push tag dari sesi agent terputus.
+- Rotasi `GATEWAY_HMAC_SECRET` selesai dan **diuji sendiri oleh pengguna**. Agent tidak memeriksa kiriman uji rotasi atas permintaan pengguna.
+- Backup foto (G6): agent menyalin 9 dari 12 foto `stored` ke folder "BACKUP foto 2026-10-10 sebelum pilot" di akun pribadi pengguna. Ukuran sama dengan Sheet. Tiga JPEG uji 22 byte ("'kutip depan", T1/T2) tidak ditemukan Drive (terhapus atau tidak dapat diakses). Semua foto bermakna tersalin.
+
+**Berikutnya (sisa):**
+1. ~~Pengguna mengatur Vercel Production Branch = `main` dan memeriksa env Production.~~ Selesai.
+2. ~~Rotasi `GATEWAY_HMAC_SECRET`~~ selesai, diuji pengguna.
+3. ~~Smoke test satu inspeksi berlabel.~~ Lulus.
 4. Pilot 3–5 hari (G7).
-5. PR #1–#5 dapat ditutup sebagai superseded.
+5. ~~PR #1–#5 ditutup sebagai superseded.~~ Selesai. Tag rilis dibuat pengguna.
 
 Pekerjaan berikutnya dimulai dari `main` terbaru, bukan dari branch rilis yang sudah di-merge. Drill rollback atau uji restore di staging hanya dijalankan bila pengguna memberi izin. Tanpa izin itu, T7 berhenti di sini.
 
