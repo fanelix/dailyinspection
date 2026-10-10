@@ -13,7 +13,7 @@ Keputusan ini milik pengguna. Agent tidak mengisi kolom status dengan asumsi.
 | G3 | Kapasitas dan batas laju diputuskan (plan §16; README "Batas laju belum ada") | **Kapasitas diputuskan: rata-rata 3 inspeksi per hari.** Batas laju belum diputuskan |
 | G4 | Keputusan merge PR #1–#5 (semua draft, bertumpuk) dan branch Production | **Diputuskan** (didelegasikan ke agent): satu PR rilis `claude/zen-heisenberg-kcgjpu` → `main`, merge commit, Vercel Production Branch = `main` |
 | G5 | Sumber daya Production (Apps Script, Spreadsheet, folder Drive, secret) | **Diputuskan: pakai yang sudah ada** (staging menjadi Production). Lihat akibatnya di bagian 1a |
-| G6 | Backup metadata dan foto aktif sebelum rollout (bagian 4) | **Metadata: selesai** 2026-10-10. Salinan Spreadsheet "BACKUP 2026-10-10 sebelum Production" berisi Inspections 31 / Photos 20 baris, identik dengan sumber, di akun pribadi pengguna. **Foto: belum dicadangkan** |
+| G6 | Backup metadata dan foto aktif sebelum rollout (bagian 4) | **Selesai** 2026-10-10 (akun pribadi pengguna). Metadata: salinan Spreadsheet identik (Inspections 31 / Photos 20). Foto: folder "BACKUP foto 2026-10-10 sebelum pilot", 9 dari 12 foto `stored` tersalin dengan ukuran sama dengan Sheet. Tiga JPEG uji 22 byte ("'kutip depan", T1/T2) tidak ditemukan Drive. Foto inspeksi `Uji produksi` dikirim sesudah salinan Spreadsheet, tetapi sebelum backup foto |
 | G7 | Pemilik operasional menerima hasil pilot (plan §13 tahap 7); pilot berjalan setelah rollout | Belum |
 
 ## 1a. Keputusan 2026-10-10 dan akibatnya
@@ -147,8 +147,8 @@ Drill rollback di staging (frontend T6 → T5, lalu kembali) **belum dijalankan*
 
 **Status rollout 2026-10-10:**
 - Langkah 1 (backup metadata) selesai.
-- Langkah 2 (rotasi secret) belum diputuskan.
-- Langkah 3: PR #6 di-merge (`40ff92c`). Tag `v2026.10.10` belum ada di GitHub, karena push tag dari sesi agent terputus; pengguna membuatnya lewat halaman Releases.
+- Langkah 2: rotasi `GATEWAY_HMAC_SECRET` **dilaporkan selesai oleh pengguna**. Belum terverifikasi dengan kiriman sesudah rotasi. Env Vercel baru berlaku setelah redeploy dan Promote.
+- Langkah 3: PR #6 di-merge (`40ff92c`). Release `v2026.10.10` dibuat pengguna lewat GitHub Releases (target `main`), karena push tag dari sesi agent terputus.
 - Langkah 4: deployment `main` `40ff92c` dipromosikan pengguna dari "Production Staged" ke Production. Halaman riwayat T6 tampil di domain Production.
 - Langkah 5: **smoke test lulus.** Kiriman "Uji produksi 2026-10-10" (Sedimen Sump) dibaca agent di Sheets: `Inspections` 31 → 32, `Photos` 20 → 21, `submitted` revisi 2, satu foto 622 KB `stored` dengan checksum sama dengan manifest, tanpa duplikat, sekitar 13 detik dari prepare sampai finalisasi.
 - Langkah 6: pilot (G7) belum.
@@ -164,8 +164,8 @@ Gateway tidak di-rollback (bagian 5).
 ## 7. Keputusan terbuka untuk pengguna
 
 - Batas laju (usulan di bagian 1a).
-- Pencadangan foto (G6 baru mencakup metadata). Salinan metadata berada di akun pribadi pengguna; pastikan sesuai kebijakan perusahaan.
-- Rotasi `GATEWAY_HMAC_SECRET` sebelum Production.
+- Backup foto berikutnya (salinan 2026-10-10 hanya titik pulih sekali; jangka panjang perlu lokasi resmi perusahaan). Backup metadata dan foto berada di akun pribadi pengguna; pastikan sesuai kebijakan perusahaan.
+- Verifikasi rotasi `GATEWAY_HMAC_SECRET` dengan satu kiriman `Uji rotasi <tanggal>`.
 - Status data uji lama dan record Android "Alfan / Pit C" (observasi nyata atau uji).
 - Pengaturan Vercel Production Branch = `main` (PR rilis #6 di-merge atas perintah pengguna 2026-10-10).
 - Frekuensi dan pemilik backup, serta lokasi salinan foto yang independen.

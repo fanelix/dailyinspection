@@ -51,11 +51,13 @@ Akibat G5 ada di `docs/runbook.md` bagian 1a:
 - `main` `40ff92c` dipromosikan ke Production oleh pengguna. Deployment `main` berstatus "Production Staged" sampai dipromosikan manual.
 - Smoke test "Uji produksi 2026-10-10" lulus (dibaca agent di Sheets): +1 inspeksi `submitted` revisi 2, +1 foto `stored` dengan checksum sama dengan manifest, tanpa duplikat.
 - PR #1–#5 ditutup sebagai superseded.
-- Tag `v2026.10.10` gagal di-push dari sesi agent (push tag terputus); pengguna membuatnya lewat GitHub Releases.
+- Release `v2026.10.10` dibuat pengguna lewat GitHub Releases (diverifikasi agent; target `main`). Push tag dari sesi agent terputus.
+- Rotasi `GATEWAY_HMAC_SECRET` dilaporkan selesai oleh pengguna. **Belum diverifikasi**: belum ada kiriman sesudah rotasi. Env Vercel baru berlaku setelah redeploy dan Promote. Jika terlewat, semua kiriman gagal (antrean di perangkat tetap aman).
+- Backup foto (G6): agent menyalin 9 dari 12 foto `stored` ke folder "BACKUP foto 2026-10-10 sebelum pilot" di akun pribadi pengguna. Ukuran sama dengan Sheet. Tiga JPEG uji 22 byte ("'kutip depan", T1/T2) tidak ditemukan Drive (terhapus atau tidak dapat diakses). Semua foto bermakna tersalin.
 
 **Berikutnya (sisa):**
 1. ~~Pengguna mengatur Vercel Production Branch = `main` dan memeriksa env Production.~~ Selesai.
-2. Rotasi `GATEWAY_HMAC_SECRET`, bila disetujui.
+2. ~~Rotasi `GATEWAY_HMAC_SECRET`~~ dilaporkan selesai. Verifikasi dengan kiriman `Uji rotasi 2026-10-10`.
 3. ~~Smoke test satu inspeksi berlabel.~~ Lulus.
 4. Pilot 3–5 hari (G7).
 5. ~~PR #1–#5 ditutup sebagai superseded.~~ Selesai. Tag rilis dibuat pengguna.
