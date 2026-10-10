@@ -1,6 +1,28 @@
 # Serah terima sesi — 2026-10-10 (T5 dan verifikasi gateway)
 
-## Status terakhir untuk sesi pengganti
+## Verifikasi T4/T5 terhadap Google sungguhan — 10 Oktober 2026 (sesi Codespace)
+
+**Jalur yang dipakai:** sesi pengganti berjalan di GitHub Codespace (CLI) tanpa akses ke cloud browser/antrean “Uji T5 sintetis” lama dan tanpa auth Vercel. Sesuai instruksi handoff, uji sintetis **baru dibuat eksplisit** dari profil Chromium headless baru di Codespace terhadap app Next lokal (`next start` di 127.0.0.1:3100) dengan `GATEWAY_URL`/`GATEWAY_HMAC_SECRET` nyata; antrean lama di browser lain tidak tersentuh. Harness ada di `/tmp/opencode/verify/verify-t5.mjs` (di luar repo). Pengguna memilih memeriksa Sheets sendiri.
+
+**Prasyarat terverifikasi:** checkout `2ad2153`; `npm ci`, `npm run check` (**65/65 lulus**), `npm run build` lulus dengan **Node v22.23.3** (repo butuh ≥22.18 untuk type stripping; Node 22.16 sandbox membuat 9 checks gagal `ERR_UNKNOWN_FILE_EXTENSION` — bukan bug kode). Tahap A `checks/live.mjs`: health gateway **`build 2026-10-10.1`**, POST tanpa tanda tangan ditolak `UNAUTHORIZED`. Sidik jari app→gateway: `POST /api/inspections {}` → `400 VALIDATION_ERROR` dari storage, membuktikan HMAC cocok dan storage baru berjalan.
+
+**Jebakan lokal (bukan bug produk):** nilai `GATEWAY_HMAC_SECRET` yang mengandung `#` terpotong parser dotenv bila ditulis tanpa kutip di `.env.local`, sehingga app menandatangani dengan nilai salah → `UNAUTHORIZED`/`SERVER_ERROR` 502. Solusi: kutip nilainya (`GATEWAY_HMAC_SECRET='…'`) atau set lewat environment proses. Nilai secret tidak dicetak ke git/README; harap rotasi bila log sesi dianggap bocor (nilai sempat tampil di log tool sesi ini karena escape shell).
+
+**Uji sintetis eksplisit** nama petugas `Uji T5 verifikasi 20261010043340`, area Pit, sub-area “Bench 1 uji gate T5”, UTM ID74 zona 50S EPSG:23890 E=500000 N=9778935, satu temuan retakan uji bertaut dua foto kuning/biru 800×600 dengan keterangan “Foto kuning uji T5”/“Foto biru uji T5” (diisi dengan spasi tepi untuk membuktikan trim), lima item lain `not_inspected`. Jalur persis T5 UI: isi → **Simpan untuk dikirim nanti** → reload → **Kirim yang tertunda**.
+
+- Pemulihan lokal: byte foto, keterangan, UTM terkonfirmasi, tautan temuan, dan antrean pulih setelah reload; payload antrean byte-identik; isian terkunci; dua foto didekode ulang; kiriman selesai 22,5 dtk.
+- `prepareCompleteInspection` 200: `uploading` revisi 1, dua reservasi, checksum checklist/lokasi/manifest cocok dengan yang diperiksa UI, `reviewRequired=false`.
+- Dua `uploadPhoto` `stored`; ukuran byte 130.610 dan 134.591 serta SHA-256 sama dengan manifest pengiriman; `finalizeInspection` → **`submitted` revisi 2**, checksum manifest/checklist/lokasi sama, dua foto `stored`, photo ID tidak berubah.
+- Baca kembali kedua foto lewat app: byte + SHA-256 identik dengan yang diunggah, `Cache-Control private`.
+- Retry tanpa duplikat: prepare ulang → `submitted` revisi 2 tanpa revisi baru; upload ulang → `stored` (`replayed=true`); finalize ulang → acknowledgment sama; tidak ada respons error pada jalur kirim.
+- Manifest `Inspections!Y` berisi dua entri `{photoId, sha256, size, caption}` dengan caption ter-trim; manifest SHA-256 `37f151c64b2503c4…`. Ringkasan lengkap (ID, hash, payload) di `/tmp/opencode/verify/summary.json` (khusus Codespace ini; jangan diterbitkan).
+- 47 pemeriksaan harness LULUS; satu label harness sempat GAGAL karena asumsi skrip keliru (`prepare` tidak mengembalikan `size` foto `reserved` — ukuran/hash divalidasi gateway pada manifest, `storage.js:209`), sudah diperbaiki; tidak ada temuan produk.
+
+**Sisa pemeriksaan manual (pengguna, di Sheets):** baris baru `Inspections` kolom **Y `photo_manifest_json`**, dua baris `Photos` kolom **O `caption`** (nilai “Foto kuning uji T5” dan “Foto biru uji T5”), data lama utuh, dan hitungan baris. Harapan: baseline 29/17 → **30/19 baris termasuk header** (kolom 25/15) bila tidak ada write lain; `note` berawalan `=` tetap teks. Bila antrean lama “Uji T5 sintetis” di browser lain ikut dikirim, jumlah akan bertambah terpisah (nama berbeda).
+
+**Batas:** ini verifikasi gateway/storage T4 dan jalur T5 di Chromium headless desktop Codespace, bukan Android; mode pesawat, eviction/quota nyata, Web Locks dua tab, dan antrean lama di perangkat lain tidak diuji sesi ini. T6/T7, izin foto/login, dan Production tidak disentuh.
+
+## Status sesi sebelumnya (sebelum verifikasi di atas)
 
 **Mulai dari `codex/t5-drafts`, bukan branch awal T2.** Repo: https://github.com/fanelix/dailyinspection. Baca `AGENTS.md`, `CLAUDE.md`, `docs/plan.md`, dokumen ini, dan `README.md`. Bagian ini mengungguli status rollout historis di bawah. Source produk terbaru `495b33f`; commit dokumentasi sebelum rekap ini `f336465`.
 
