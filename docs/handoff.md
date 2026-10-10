@@ -25,6 +25,7 @@
 - **G5:** Production memakai Apps Script, Spreadsheet, dan folder Drive yang sama dengan staging. Tidak ada staging terpisah lagi. Uji harus diberi label jelas.
 - **Izin foto:** dibiarkan `anyone`/writer atas keputusan pengguna.
 - Akses tanpa aktivasi perangkat (2026-10-09) tetap berlaku.
+- **Logo BSI** (`app/bsi-logo-white.png`) boleh tetap di repo publik.
 
 **Backup (G6)** — keduanya di akun pribadi pengguna
 - Salinan Spreadsheet "BACKUP 2026-10-10 sebelum Production" (Inspections 31 / Photos 20 baris, identik dengan sumber).
@@ -59,7 +60,6 @@
 4. Pembersihan data uji dan status record "Alfan / Pit C".
 5. Foto penutupan review (ditunda; mengubah invarian manifest T4).
 6. Promosi tampilan PR #9: coba deployment `main` di Android, lalu Promote saat tidak ada pengisian berjalan (service worker baru aktif setelah semua tab ditutup; kirim draft tertunda dulu). Rollback lewat Vercel Instant Rollback.
-7. Logo BSI (`app/bsi-logo-white.png`) kini ada di repo publik; pengguna belum memutuskan boleh atau diganti teks.
 
 **Prompt awal sesi berikutnya (saran):**
 > Lanjutkan repo https://github.com/fanelix/dailyinspection dari `main` terbaru. Baca AGENTS.md, CLAUDE.md, docs/handoff.md (Rekap pindah sesi), docs/runbook.md, docs/plan.md, dan README.md. Status: rilis T0–T7 aktif di Production; sisa pilot G7; tampilan baru PR #9 sudah di `main` tetapi belum di-Promote. Verifikasi cepat `npm ci`, `npm run check` (74/74), dan `npm run build` dengan Node ≥ 22.18, lalu tunggu arahan saya. Jangan ubah izin foto, login/aktivasi, gateway, atau merge/promote tanpa perintah.
