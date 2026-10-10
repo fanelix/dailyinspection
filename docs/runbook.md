@@ -147,7 +147,7 @@ Drill rollback di staging (frontend T6 → T5, lalu kembali) **belum dijalankan*
 
 **Status rollout 2026-10-10:**
 - Langkah 1 (backup metadata) selesai.
-- Langkah 2: rotasi `GATEWAY_HMAC_SECRET` **dilaporkan selesai oleh pengguna**. Belum terverifikasi dengan kiriman sesudah rotasi. Env Vercel baru berlaku setelah redeploy dan Promote.
+- Langkah 2: rotasi `GATEWAY_HMAC_SECRET` **selesai dan diuji sendiri oleh pengguna** (2026-10-10). Agent tidak memeriksa kiriman uji rotasi atas permintaan pengguna. Catatan: env Vercel baru berlaku setelah redeploy dan Promote.
 - Langkah 3: PR #6 di-merge (`40ff92c`). Release `v2026.10.10` dibuat pengguna lewat GitHub Releases (target `main`), karena push tag dari sesi agent terputus.
 - Langkah 4: deployment `main` `40ff92c` dipromosikan pengguna dari "Production Staged" ke Production. Halaman riwayat T6 tampil di domain Production.
 - Langkah 5: **smoke test lulus.** Kiriman "Uji produksi 2026-10-10" (Sedimen Sump) dibaca agent di Sheets: `Inspections` 31 → 32, `Photos` 20 → 21, `submitted` revisi 2, satu foto 622 KB `stored` dengan checksum sama dengan manifest, tanpa duplikat, sekitar 13 detik dari prepare sampai finalisasi.
@@ -165,7 +165,6 @@ Gateway tidak di-rollback (bagian 5).
 
 - Batas laju (usulan di bagian 1a).
 - Backup foto berikutnya (salinan 2026-10-10 hanya titik pulih sekali; jangka panjang perlu lokasi resmi perusahaan). Backup metadata dan foto berada di akun pribadi pengguna; pastikan sesuai kebijakan perusahaan.
-- Verifikasi rotasi `GATEWAY_HMAC_SECRET` dengan satu kiriman `Uji rotasi <tanggal>`.
 - Status data uji lama dan record Android "Alfan / Pit C" (observasi nyata atau uji).
 - Pengaturan Vercel Production Branch = `main` (PR rilis #6 di-merge atas perintah pengguna 2026-10-10).
 - Frekuensi dan pemilik backup, serta lokasi salinan foto yang independen.
