@@ -24,7 +24,7 @@ async function shellStatus() {
 }
 export default function OfflineReady({db}: {db:IDBDatabase}) {
   const [message,setMessage]=useState('Belum siap untuk pencatatan offline. Siapkan saat ada jaringan.');
-  const [busy,setBusy]=useState(false),[ready,setReady]=useState(false);
+  const [busy,setBusy]=useState(false),[ready,setReady]=useState(false),[persistent,setPersistent]=useState(true);
   async function verify() {
     const waiting=await shellStatus();
     for (const area of CHECKLISTS.areas) {
@@ -33,7 +33,7 @@ export default function OfflineReady({db}: {db:IDBDatabase}) {
       cached.locations.forEach(l=>parseSavedLocation(l,area.id));
     }
     const persistent=await navigator.storage?.persisted?.().catch(()=>false);
-    setReady(true);setMessage(`✔ Siap untuk pencatatan offline. Template, aset aplikasi dan daftar lokasi tujuh area tersedia.${persistent ? ' Penyimpanan persisten diberikan browser.' : ' Penyimpanan persisten belum diberikan browser.'}${waiting ? ' Versi baru akan aktif setelah semua tab aplikasi ditutup.' : ''}`);
+    setReady(true);setPersistent(!!persistent);setMessage(`✔ Siap untuk pencatatan offline. Template, aset aplikasi dan daftar lokasi tujuh area tersedia.${persistent ? ' Penyimpanan persisten diberikan browser.' : ''}${waiting ? ' Versi baru akan aktif setelah semua tab aplikasi ditutup.' : ''}`);
   }
   useEffect(()=>{
     let live=true;
@@ -58,9 +58,12 @@ export default function OfflineReady({db}: {db:IDBDatabase}) {
     } catch(err) {setReady(false);setMessage(`Belum siap offline. ${err instanceof Error?err.message:'Persiapan gagal.'}`);}
     finally {setBusy(false);}
   }
-  return <section aria-label="Persiapan offline">
-    <p className={`status ${ready?'ok':''}`} role="status">{message}</p>
-    <button type="button" disabled={busy} onClick={()=>void prepare()}>{busy?'Menyiapkan offline…':'Siapkan pencatatan offline'}</button>
+  return <section className="panel offline-panel" aria-labelledby="offline-title">
+    <h2 id="offline-title">Kesiapan offline</h2>
+    {!ready && <span className={`badge ${busy?'info':''}`}><i className={`ic ic-sm ${busy?'ic-sync':'ic-circle'}`} aria-hidden="true" />{busy?'Menyiapkan':'Belum siap'}</span>}
+    <p className={`status ${ready?'ok':message.startsWith('Belum siap offline.')?'error':''}`} role="status">{message}</p>
+    {ready && !persistent && <p className="status warn" role="note">⚠ Penyimpanan persisten belum diberikan browser. Draft bisa terhapus bila ruang perangkat menipis; kirim segera setelah ada sinyal.</p>}
+    <button type="button" className={ready?'secondary':''} disabled={busy} onClick={()=>void prepare()}><i className="ic ic-sync" aria-hidden="true" />{busy?'Menyiapkan offline…':ready?'Siapkan ulang':'Siapkan pencatatan offline'}</button>
     <p className="hint">Siapkan sebelum berangkat. Peta latar memerlukan jaringan; koordinat manual dan lokasi tersimpan tetap tersedia. Jangan bersihkan data browser ketika ada draft belum terkirim.</p>
   </section>;
 }

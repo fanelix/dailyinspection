@@ -115,15 +115,24 @@ export default function LocationPicker({ areaId, value, disabled, onChange, db, 
     }
     catch (err) { setError(err instanceof Error ? err.message : 'Lokasi tidak valid.'); }
   }
-  return <section aria-labelledby="location-title">
-    <h2 id="location-title">Lokasi objek inspeksi</h2>
+  const choice = (name: string, label: string, options: [string, string][], current: string, set: (v: string) => void) => <fieldset className="seg two">
+    <legend>{label}</legend>
+    {options.map(([v, text]) => <label key={v}><input type="radio" name={name} value={v} checked={current === v} disabled={disabled} onChange={() => set(v)} />{text}</label>)}
+  </fieldset>;
+  return <section className="panel" aria-labelledby="location-title">
+    <h2 id="location-title">Lokasi objek</h2>
     <p className="hint">Pilih titik objek yang diperiksa. Posisi petugas dapat berbeda saat mengamati dari tempat aman. Peta memakai WGS84; koordinat UTM dikonversi sesuai pilihan datum dan zona.</p>
-    <button type="button" onClick={getGps} disabled={disabled}>Ambil GPS petugas</button>
-    {gpsMessage && <p role="status">{gpsMessage}</p>}
+    <div className="group">
+    <h3><i className="ic ic-user" aria-hidden="true" />Posisi petugas (GPS)</h3>
+    <button type="button" className="secondary" onClick={getGps} disabled={disabled}><i className="ic ic-map-pin" aria-hidden="true" />Ambil GPS petugas</button>
+    {gpsMessage && <p className="hint" role="status">{gpsMessage}</p>}
     {observer && <>
-      <p className="hint">GPS petugas: {observer.latitude}, {observer.longitude}; akurasi dilaporkan perangkat {observer.accuracyM} m; {observer.capturedAt}.</p>
-      <button type="button" onClick={() => choose({ ...observer, method: 'gps', savedLocation: null })} disabled={disabled}>Gunakan GPS petugas sebagai lokasi objek</button>
+      <p className="meta"><span className="mono">{observer.latitude}, {observer.longitude}</span><span className="badge ok"><i className="ic ic-sm ic-check-circle" aria-hidden="true" />Akurasi ±{Math.round(observer.accuracyM ?? 0)} m</span></p>
+      <p className="hint">Tempat petugas berdiri, bukan lokasi objek. Akurasi dilaporkan perangkat {observer.accuracyM} m; {observer.capturedAt}.</p>
+      <button type="button" className="secondary" onClick={() => choose({ ...observer, method: 'gps', savedLocation: null })} disabled={disabled}>Gunakan GPS petugas sebagai lokasi objek</button>
     </>}
+    </div>
+    <h3><i className="ic ic-map-pin" aria-hidden="true" />Posisi objek</h3>
     <label htmlFor="saved-location">Lokasi tersimpan</label>
     <select id="saved-location" value={selected} disabled={disabled || !saved.length} onChange={e => {
       const l = saved.find(l => l.id === e.target.value);
@@ -133,28 +142,22 @@ export default function LocationPicker({ areaId, value, disabled, onChange, db, 
       <option value="">Pilih lokasi…</option>{saved.map(l => <option key={l.id} value={l.id}>{l.label} ({l.id}, revisi {l.revision})</option>)}
     </select>
     {masterMessage && <p className="hint" role="status">{masterMessage}</p>}
-    <button type="button" disabled={disabled} onClick={() => {
+    <button type="button" className="secondary" disabled={disabled} onClick={() => {
       if (point?.method === 'saved_location') { edit(); setPoint(null); setSelected(''); setLatitude(''); setLongitude(''); setEasting(''); setNorthing(''); }
       setSaved([]); setMasterMessage('Memuat lokasi tersimpan…'); setReloadKey(current => current + 1);
-    }}>Muat ulang lokasi tersimpan</button>
-    <LocationMap observer={observer} point={point} disabled={disabled} onPin={pin} />
-    <label htmlFor="coordinate-mode">Sistem koordinat</label>
-    <select id="coordinate-mode" value={coordinateMode} disabled={disabled} onChange={e => { edit(); setCoordinateMode(e.target.value); if (point && e.target.value === 'utm') showUtm(point); }}>
-      <option value="utm">UTM (Easting / Northing)</option><option value="geographic">WGS84 (Latitude / Longitude)</option>
-    </select>
+    }}><i className="ic ic-sync" aria-hidden="true" />Muat ulang lokasi tersimpan</button>
+    {choice('coordinate-mode', 'Sistem koordinat', [['utm', 'UTM'], ['geographic', 'WGS84 lat/long']], coordinateMode, v => { edit(); setCoordinateMode(v); if (point && v === 'utm') showUtm(point); })}
     {coordinateMode === 'utm' ? <>
-      <label htmlFor="utm-datum">Datum UTM</label>
-      <select id="utm-datum" value={datum} disabled={disabled} onChange={e => changeSettings('datum', e.target.value)}>
-        <option value="WGS84">WGS84</option><option value="DGN95">DGN95</option><option value="ID74">ID74 (Indonesian Datum 1974)</option>
-      </select>
       <div className="coordinate-fields">
+        <div><label htmlFor="utm-datum">Datum</label>
+        <select id="utm-datum" value={datum} disabled={disabled} onChange={e => changeSettings('datum', e.target.value)}>
+          <option value="WGS84">WGS84</option><option value="DGN95">DGN95</option><option value="ID74">ID74 (Indonesian Datum 1974)</option>
+        </select></div>
         <div><label htmlFor="utm-zone">Zona UTM</label><select id="utm-zone" value={zone} disabled={disabled} onChange={e => changeSettings('zone', e.target.value)}>
           <option value="">Pilih zona…</option>{Array.from({ length: 60 }, (_, i) => i+1).map(z => <option key={z} value={z} disabled={datum !== 'WGS84' && !utmCrs.some(c => c.datum === datum && c.zone === z && (!hemisphere || c.hemisphere === hemisphere))}>{z}</option>)}
         </select></div>
-        <div><label htmlFor="utm-hemisphere">Belahan bumi</label><select id="utm-hemisphere" value={hemisphere} disabled={disabled} onChange={e => changeSettings('hemisphere', e.target.value)}>
-          <option value="">Pilih belahan…</option><option value="N">N — Utara</option><option value="S">S — Selatan</option>
-        </select></div>
       </div>
+      {choice('utm-hemisphere', 'Belahan bumi', [['N', 'N (utara)'], ['S', 'S (selatan)']], hemisphere, v => changeSettings('hemisphere', v))}
       <p className="hint">Pilih sesuai referensi koordinat site. WGS84 mendukung zona 1–60; DGN95/ID74 mengikuti cakupan CRS Indonesia. {datum === 'DGN95' ? 'Transformasi DGN95 ke WGS84 adalah pendekatan dengan akurasi 1 m.' : datum === 'ID74' ? 'Transformasi ID74 ke WGS84 adalah pendekatan dengan akurasi 3 m.' : 'GPS perangkat memakai WGS84.'} Jumlah desimal bukan ketelitian survey.</p>
       <div className="coordinate-fields">
         <div><label htmlFor="utm-easting">Easting objek (m)</label><input id="utm-easting" type="number" inputMode="decimal" step="any" value={easting} disabled={disabled} onChange={e => { edit(); setPoint(null); setSelected(''); setEasting(e.target.value); }} /></div>
@@ -166,12 +169,13 @@ export default function LocationPicker({ areaId, value, disabled, onChange, db, 
       <div><label htmlFor="longitude">Longitude objek (−180 sampai 180)</label><input id="longitude" type="number" inputMode="decimal" step="any" min={-180} max={180} value={longitude} disabled={disabled} onChange={e => { edit(); setPoint(null); setSelected(''); setLongitude(e.target.value); }} /></div>
     </div>
     </>}
-    <button type="button" onClick={manual} disabled={disabled}>Pratinjau koordinat manual</button>
+    <button type="button" className="secondary" onClick={manual} disabled={disabled}><i className="ic ic-map-pin" aria-hidden="true" />Pratinjau koordinat manual</button>
+    <LocationMap observer={observer} point={point} disabled={disabled} onPin={pin} />
     {point && <p className="hint">Objek: {point.latitude}, {point.longitude}; metode {point.method === 'gps' ? 'GPS petugas' : point.method === 'manual_pin' ? 'pin manual' : point.method === 'saved_location' ? 'lokasi tersimpan' : 'koordinat manual'}.{point.accuracyM === null ? ' Akurasi GPS objek tidak tersedia.' : ` Akurasi perangkat ${point.accuracyM} m.`}</p>}
     {value?.object.utm && <p className="hint">UTM dikonfirmasi: {value.object.utm.datum}, zona {value.object.utm.zone}{value.object.utm.hemisphere}, {value.object.utm.crs}; E {value.object.utm.easting.toFixed(3)} m, N {value.object.utm.northing.toFixed(3)} m.</p>}
-    <button type="button" onClick={confirm} disabled={disabled || !point}>Konfirmasi lokasi objek</button>
+    <button type="button" onClick={confirm} disabled={disabled || !point}><i className="ic ic-check-circle" aria-hidden="true" />Konfirmasi lokasi objek</button>
     {error && <p role="alert" className="status error">{error}</p>}
-    <p role="status">{value ? '✔ Lokasi objek dikonfirmasi. Perubahan lokasi memerlukan konfirmasi ulang.' : 'Lokasi objek belum dikonfirmasi.'}</p>
-    {value && <a download="lokasi-objek.geojson" href={`data:application/geo+json;charset=utf-8,${encodeURIComponent(JSON.stringify(locationGeoJson(value), null, 2))}`}>Unduh titik objek (GeoJSON)</a>}
+    <p role="status" className={`status ${value ? 'ok' : ''}`}>{value ? '✔ Lokasi objek dikonfirmasi. Perubahan lokasi memerlukan konfirmasi ulang.' : 'Lokasi objek belum dikonfirmasi.'}</p>
+    {value && <p><a download="lokasi-objek.geojson" href={`data:application/geo+json;charset=utf-8,${encodeURIComponent(JSON.stringify(locationGeoJson(value), null, 2))}`}>Unduh titik objek (GeoJSON)</a></p>}
   </section>;
 }

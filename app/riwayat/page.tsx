@@ -54,46 +54,61 @@ export default function Riwayat() {
 
   return (
     <main>
-      <h1>Riwayat inspeksi</h1>
-      <p><Link href="/">← Inspeksi baru</Link></p>
-      <section aria-label="Filter riwayat">
-        <label htmlFor="filter-area">Area</label>
-        <select id="filter-area" value={filters.areaId} onChange={(e) => setFilters({ ...filters, areaId: e.target.value })}>
-          <option value="">Semua area</option>
-          {CHECKLISTS.areas.map((area) => <option key={area.id} value={area.id}>{area.label}</option>)}
-        </select>
-        <label htmlFor="filter-status">Status</label>
-        <select id="filter-status" value={filters.status} onChange={(e) => setFilters({ ...filters, status: e.target.value })}>
-          <option value="">Semua status</option>
-          <option value="submitted">Terkirim</option>
-          <option value="uploading">Belum selesai</option>
-        </select>
-        <div className="coordinate-fields">
+      <div className="title-row">
+        <h1>Riwayat inspeksi</h1>
+        <Link className="button secondary" href="/"><i className="ic ic-arrow-left" aria-hidden="true" />Beranda</Link>
+        <p className="hint">Data dari server. Perlu sinyal untuk memuat.</p>
+      </div>
+      <section className="panel" aria-labelledby="filter-title">
+        <h2 id="filter-title">Filter</h2>
+        <div className="filters">
+          <div><label htmlFor="filter-area">Area</label>
+          <select id="filter-area" value={filters.areaId} onChange={(e) => setFilters({ ...filters, areaId: e.target.value })}>
+            <option value="">Semua area</option>
+            {CHECKLISTS.areas.map((area) => <option key={area.id} value={area.id}>{area.label}</option>)}
+          </select></div>
+          <div><label htmlFor="filter-status">Status</label>
+          <select id="filter-status" value={filters.status} onChange={(e) => setFilters({ ...filters, status: e.target.value })}>
+            <option value="">Semua status</option>
+            <option value="submitted">Terkirim</option>
+            <option value="uploading">Belum selesai</option>
+          </select></div>
           <div><label htmlFor="filter-from">Dari tanggal observasi</label><input id="filter-from" type="date" value={filters.from} onChange={(e) => setFilters({ ...filters, from: e.target.value })} /></div>
           <div><label htmlFor="filter-to">Sampai tanggal observasi</label><input id="filter-to" type="date" value={filters.to} onChange={(e) => setFilters({ ...filters, to: e.target.value })} /></div>
         </div>
         <div className="photo-actions">
           <button type="button" onClick={() => setApplied(filters)} disabled={loading}>Terapkan filter</button>
-          <button type="button" onClick={() => download(buildCsv(items), 'riwayat-inspeksi.csv', 'text/csv;charset=utf-8')} disabled={!items.length}>Unduh CSV ({items.length})</button>
-          <button type="button" onClick={() => download(buildGeoJson(items), 'riwayat-inspeksi.geojson', 'application/geo+json')} disabled={!items.length}>Unduh GeoJSON ({items.length})</button>
+          <button type="button" className="secondary" onClick={() => download(buildCsv(items), 'riwayat-inspeksi.csv', 'text/csv;charset=utf-8')} disabled={!items.length}><i className="ic ic-sm ic-file-text" aria-hidden="true" />Unduh CSV ({items.length})</button>
+          <button type="button" className="secondary" onClick={() => download(buildGeoJson(items), 'riwayat-inspeksi.geojson', 'application/geo+json')} disabled={!items.length}><i className="ic ic-sm ic-map-pin" aria-hidden="true" />Unduh GeoJSON ({items.length})</button>
         </div>
         <p className="hint">Ekspor memuat {items.length} baris yang sudah tampil{hasMore ? '; tekan “Muat lagi” untuk menambah baris' : ''}. GeoJSON memakai urutan [longitude, latitude] WGS84; inspeksi tanpa koordinat tetap muncul dengan geometry null.</p>
         {skipped > 0 && <p className="hint">{skipped} baris lama tanpa ID inspeksi valid dilewati; baris itu tidak diubah.</p>}
       </section>
-      {error && <p className="status error" role="alert">{error}</p>}
-      {loading && !items.length && <p role="status">Memuat riwayat…</p>}
-      {!loading && !items.length && !error && <p role="status">Tidak ada inspeksi yang cocok.</p>}
-      <ul className="history-list">
+      {error && <p className="status error" role="alert">✖ {error}</p>}
+      {loading && !items.length && <p className="status" role="status">Memuat riwayat…</p>}
+      {!loading && !items.length && !error && <p className="status" role="status">Tidak ada inspeksi yang cocok. Ubah area, status, atau rentang tanggal.</p>}
+      <ul className="cards" style={{ marginTop: 14 }}>
         {items.map((i) => (
-          <li key={i.inspectionId} className="history-card">
-            <h2>{areaLabel(i.areaId)}{i.subArea ? ` — ${i.subArea}` : ''}</h2>
-            <p className="hint">{time(i.observedAt)} · {i.inspectorName || 'Tanpa nama'} · {i.status === 'submitted' ? 'Terkirim' : 'Belum selesai'} · revisi {i.version}</p>
-            <p className="hint">{i.photoCount} foto · {i.findings.total} temuan ({i.findings.open} belum selesai, {i.findings.closed} ditutup){i.reviewRequired ? ' · perlu review' : ''}{i.reviews ? ` · ${i.reviews} review` : ''}</p>
-            <p><Link href={`/riwayat/${i.inspectionId}`}>Buka detail dan review</Link></p>
+          <li key={i.inspectionId}>
+            <Link className="row" href={`/riwayat/${i.inspectionId}`}>
+              <span className="row-title">{areaLabel(i.areaId)}{i.subArea ? ` — ${i.subArea}` : ''}</span>
+              <span className="meta">
+                {i.status === 'submitted'
+                  ? <span className="badge ok"><i className="ic ic-sm ic-check-circle" aria-hidden="true" />Terkirim</span>
+                  : <span className="badge warn"><i className="ic ic-sm ic-clock" aria-hidden="true" />Belum selesai</span>}
+                <span><i className="ic ic-sm ic-calendar" aria-hidden="true" />{time(i.observedAt)}</span>
+                <span><i className="ic ic-sm ic-user" aria-hidden="true" />{i.inspectorName || 'Tanpa nama'}</span>
+                <span>Revisi {i.version}</span>
+                <span><i className="ic ic-sm ic-camera" aria-hidden="true" />{i.photoCount} foto</span>
+                <span><i className={`ic ic-sm ${i.findings.open ? 'ic-alert-triangle' : 'ic-check-circle'}`} aria-hidden="true" />{i.findings.total ? `${i.findings.total} temuan: ${i.findings.open} belum selesai · ${i.findings.closed} ditutup` : 'Tidak ada temuan'}</span>
+                <span><i className="ic ic-sm ic-comment" aria-hidden="true" />{i.reviews} review{i.reviewRequired ? ' · perlu review' : ''}</span>
+              </span>
+              <span className="row-link">Buka detail dan review<i className="ic ic-sm ic-chevron-right" aria-hidden="true" /></span>
+            </Link>
           </li>
         ))}
       </ul>
-      {hasMore && <button type="button" onClick={() => void load(items.length)} disabled={loading}>{loading ? 'Memuat…' : 'Muat lagi'}</button>}
+      {hasMore && <button type="button" className="secondary" onClick={() => void load(items.length)} disabled={loading}>{loading ? 'Memuat…' : 'Muat lagi'}</button>}
       {matched !== null && <p className="hint">{matched} inspeksi cocok dengan filter ini.</p>}
     </main>
   );
