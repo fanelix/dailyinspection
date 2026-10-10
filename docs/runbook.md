@@ -13,7 +13,7 @@ Keputusan ini milik pengguna. Agent tidak mengisi kolom status dengan asumsi.
 | G3 | Kapasitas dan batas laju diputuskan (plan §16; README "Batas laju belum ada") | **Kapasitas diputuskan: rata-rata 3 inspeksi per hari.** Batas laju belum diputuskan |
 | G4 | Keputusan merge PR #1–#5 (semua draft, bertumpuk) dan branch Production | **Diputuskan** (didelegasikan ke agent): satu PR rilis `claude/zen-heisenberg-kcgjpu` → `main`, merge commit, Vercel Production Branch = `main` |
 | G5 | Sumber daya Production (Apps Script, Spreadsheet, folder Drive, secret) | **Diputuskan: pakai yang sudah ada** (staging menjadi Production). Lihat akibatnya di bagian 1a |
-| G6 | Backup metadata dan foto aktif sebelum rollout (bagian 4) | Belum |
+| G6 | Backup metadata dan foto aktif sebelum rollout (bagian 4) | **Metadata: selesai** 2026-10-10. Salinan Spreadsheet "BACKUP 2026-10-10 sebelum Production" berisi Inspections 31 / Photos 20 baris, identik dengan sumber, di akun pribadi pengguna. **Foto: belum dicadangkan** |
 | G7 | Pemilik operasional menerima hasil pilot (plan §13 tahap 7); pilot berjalan setelah rollout | Belum |
 
 ## 1a. Keputusan 2026-10-10 dan akibatnya
@@ -34,7 +34,7 @@ Keputusan ini milik pengguna. Agent tidak mengisi kolom status dengan asumsi.
 **Sumber daya (G5): pakai yang ada.** Akibatnya:
 1. **Tidak ada lagi staging terpisah.** Preview Vercel dan uji berikutnya menulis ke Spreadsheet dan folder yang sama dengan data Production. Uji harus diberi label jelas.
 2. **Data uji lama tetap tampil di riwayat.** Contohnya smoke test, baris uji T1–T6, dan baris `#ERROR!`. Pembersihan memerlukan keputusan pengguna. Agent tidak menghapus.
-3. **Izin foto: `anyone` sebagai writer.** Diperiksa 2026-10-10 (baca saja) pada foto Android terbaru. Siapa pun yang memegang tautan file dapat melihat dan mengubahnya. Aplikasi tidak membocorkan ID Drive, tetapi izin ini tidak privat. Atas keputusan pengguna 2026-10-09, agent tidak mengubahnya. Pengguna perlu memutuskan sebelum foto lapangan rutin.
+3. **Izin foto: `anyone` sebagai writer.** Diperiksa 2026-10-10 (baca saja) pada foto Android terbaru. Siapa pun yang memegang tautan file dapat melihat dan mengubahnya. Aplikasi tidak membocorkan ID Drive. **Keputusan pengguna 2026-10-10: izin dibiarkan apa adanya.** Risikonya diterima pengguna.
 4. **Rotasi `GATEWAY_HMAC_SECRET` disarankan.** Handoff mencatat nilainya sempat tampil di log sesi sebelumnya. Rotasi berarti mengganti Script Property lalu env Vercel (Production dan Preview) dengan nilai yang sama. Lakukan berurutan, karena antara dua langkah itu kiriman gagal `UNAUTHORIZED`. Antrean di perangkat tetap aman dan bisa dikirim ulang.
 5. **Gateway sudah build `2026-10-10.2`.** Rollout tidak memerlukan perubahan Apps Script.
 
@@ -154,9 +154,9 @@ Gateway tidak di-rollback (bagian 5).
 ## 7. Keputusan terbuka untuk pengguna
 
 - Batas laju (usulan di bagian 1a).
-- Izin foto `anyone`/writer di folder yang dipakai (bagian 1a butir 3).
+- Pencadangan foto (G6 baru mencakup metadata). Salinan metadata berada di akun pribadi pengguna; pastikan sesuai kebijakan perusahaan.
 - Rotasi `GATEWAY_HMAC_SECRET` sebelum Production.
 - Status data uji lama dan record Android "Alfan / Pit C" (observasi nyata atau uji).
-- Perintah merge PR rilis ke `main` dan pengaturan Vercel Production Branch.
+- Pengaturan Vercel Production Branch = `main` (PR rilis #6 di-merge atas perintah pengguna 2026-10-10).
 - Frekuensi dan pemilik backup, serta lokasi salinan foto yang independen.
 - Keputusan akses tanpa aktivasi perangkat (2026-10-09) tetap berlaku; risikonya diterima pengguna.
