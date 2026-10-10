@@ -1,5 +1,27 @@
 # Serah terima sesi — 2026-10-10 (T5 dan verifikasi gateway)
 
+## T6 dan verifikasi riwayat/review/ekspor — 10 Oktober 2026 (sesi Codespace)
+
+**Status:** T6 selesai dan terverifikasi terhadap Google. Branch `codex/t6-history` (produk `8c4d134`, docs menyusul), PR [#5](https://github.com/fanelix/dailyinspection/pull/5) draft bertumpuk di atas PR #4. Gateway aktif **`build 2026-10-10.2`** (pembaruan dua file: `gateway`, `storage`). Foto penutupan **ditunda** atas keputusan pengguna; tidak mengubah invarian manifest T4.
+
+**Insiden deploy sesi ini (jangan diulang):** (1) setelah pengguna menempel file, deployment menjawab halaman Error `SyntaxError: Identifier 'SCHEMA_VERSION' has already been declared (line 1, file "storage")` — penyebabnya isi `gateway` ikut tertempel/nama tertukar di file `storage`; satu-satunya `const SCHEMA_VERSION` harus di file `gateway`. (2) Mengganti isi editor **tidak** mengubah web app; user harus *Manage deployments → ✏ → New version → Deploy* dan nomor Version harus naik. (3) Pencarian editor default tidak case-sensitive — `schema_version` (kolom) bukan `SCHEMA_VERSION` (konstanta). Setelah dua kali redeploy, health dan perilaku terverifikasi.
+
+**Bug produk yang ditemukan verifikasi nyata lalu diperbaiki (`8c4d134`):** `listInspections`/`getInspection` membaca kolom sheet mentah sehingga pemetaan staging tidak diterapkan (nama/status/versi/checksum foto kosong untuk database pengguna). Diperbaiki dengan `recordFromRow_` bersama `readRecord_`; check regresi dengan header staging ditambahkan (`checks/history.check.mjs`). Pelajaran: runtime tiruan berskema sederhana menyembunyikan bug pemetaan staging; verifikasi Google tetap wajib.
+
+**Isi T6:** aksi `listInspections` (filter area/status/tanggal + paginasi, `skipped` untuk baris non-UUID, read-only), `getInspection` (tanpa byte/ID Drive), `reviewInspection` (`expectedVersion`, `VERSION_CONFLICT` 409, replay `reviewId` idempoten, cap riwayat 20 entri); kolom additif `Inspections!Z review_json`; halaman `/riwayat` + `/riwayat/[id]`; ekspor CSV (guard formula) dan GeoJSON `[lon,lat]` dari baris tampil; foto tetap lewat pasangan ID.
+
+**Bukti nyata (22/22 lulus):** riwayat memuat 12 record UUID, `skipped` 17 baris lama non-UUID (dipertahankan apa adanya); record `Uji T5 verifikasi 20261010043340` tampil Terkirim revisi 2 dengan dua foto didekode; review “Reviewer verifikasi T6” (`reviewId b320e309…`) → revisi 3, temuan `cracks` ditutup; versi basi → 409; replay idempoten → versi tetap 3; detail dua foto `stored` checksum/ukuran = manifest dan tidak membocorkan byte; CSV/GeoJSON memuat koordinat `[117.000261105488, -1.9999997634890758]`; matched tetap 12 (tanpa baris/revisi ganda). Ringkasan: `/tmp/opencode/verify/t6-live-summary.json` (khusus Codespace ini).
+
+**Sisa pemeriksaan manual pengguna (Sheets):**
+- `Inspections!Z` header `review_json` (26 kolom A..Z; baris tetap 30 termasuk header).
+- Baris `Uji T5 verifikasi 20261010043340`: `revision` = 3, `workflow_status` = submitted, sel `Z` berisi satu entri review: reviewer `Reviewer verifikasi T6`, catatan “Review sintetis verifikasi T6; boleh dihapus.”, `findings: [{itemId: "cracks", status: "closed", note: ""}]`, versi 3.
+- `Photos` tetap 19 baris termasuk header; dua foto record itu tidak berubah.
+- Data lama/kolom lama utuh; hanya header bertambah Y (T4) dan Z (T6).
+
+**Catatan data nyata:** riwayat ikut menampilkan baris uji T1 lama (nama `#ERROR!`, `=uji teks, bukan rumus`, dll.) apa adanya karena tidak dihapus; 17 baris lain tanpa UUID dilewati dan tidak diubah. T6 tidak memutuskan pembersihan.
+
+**Berikutnya:** pemeriksaan Sheets di atas; lalu keputusan pengguna untuk T7 (Android/lapangan, volume pilot, backup/restore, rollout) dan/atau increment foto penutupan review; PR #1–#5 tetap draft, Production tidak disentuh.
+
 ## Verifikasi T4/T5 terhadap Google sungguhan — 10 Oktober 2026 (sesi Codespace)
 
 **Jalur yang dipakai:** sesi pengganti berjalan di GitHub Codespace (CLI) tanpa akses ke cloud browser/antrean “Uji T5 sintetis” lama dan tanpa auth Vercel. Sesuai instruksi handoff, uji sintetis **baru dibuat eksplisit** dari profil Chromium headless baru di Codespace terhadap app Next lokal (`next start` di 127.0.0.1:3100) dengan `GATEWAY_URL`/`GATEWAY_HMAC_SECRET` nyata; antrean lama di browser lain tidak tersentuh. Harness ada di `/tmp/opencode/verify/verify-t5.mjs` (di luar repo). Pengguna memilih memeriksa Sheets sendiri.
