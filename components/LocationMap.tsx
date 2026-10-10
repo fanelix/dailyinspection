@@ -37,7 +37,7 @@ export default function LocationMap({ observer, point, disabled, onPin, readOnly
     const markers: Leaflet.Layer[] = [];
     import('leaflet').then(L => {
       if (disposed) return;
-      if (observer) markers.push(L.circleMarker([observer.latitude, observer.longitude], { radius: 9, color: '#0758a5', fillOpacity: 0.8 }).bindTooltip('GPS petugas (biru)').addTo(map));
+      if (observer) markers.push(L.circleMarker([observer.latitude, observer.longitude], { radius: 9, color: '#224882', fillOpacity: 0.8 }).bindTooltip('GPS petugas (biru)').addTo(map));
       if (point) {
         markers.push(L.marker([point.latitude, point.longitude], { icon: L.divIcon({ className: 'object-pin', html: 'O', iconSize: [32, 32], iconAnchor: [16, 32] }), draggable: !disabled })
           .bindTooltip('Lokasi objek (oranye)').on('dragend', (e: Leaflet.LeafletEvent) => {

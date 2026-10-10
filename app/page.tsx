@@ -2,6 +2,7 @@
 
 // T5: durable form/photo snapshots and foreground queue; server protocol stays T4.
 import { useEffect, useRef, useState } from 'react';
+import Link from 'next/link';
 import type { ChangeEvent, FormEvent } from 'react';
 import { compressPhoto, sha256Hex } from '../lib/photos.ts';
 import { CHECKLISTS, emptyAnswers } from '../lib/inspection.ts';
@@ -189,19 +190,29 @@ function InspectionForm({ db, initial, drafts, onSaved, onOpen }: { db: IDBDatab
   async function submit(e: FormEvent) { e.preventDefault(); if (!submitted) await send(); }
 
   const busy = status.kind === 'busy' || photoMsg.kind === 'busy';
+  const phaseBadge = { draft: ['', 'ic-file-text', 'Draft'], queued: ['warn', 'ic-clock', 'Menunggu kirim'], submitted: ['ok', 'ic-check-circle', 'Terkirim'] } as const;
   return (
-    <section>
-      <section aria-label="Draft di perangkat">
-        <h2>Draft di perangkat</h2>
-        <p>{drafts.filter(d=>d.phase !== 'submitted').length} belum terkirim. Draft hanya tersedia pada browser dan alamat aplikasi ini.</p>
-        <div className="photo-actions"><button type="button" disabled={busy} onClick={()=>void open()}>Mulai inspeksi baru</button>
-        <button type="button" disabled={busy || !drafts.some(d=>d.phase==='queued')} onClick={()=>void send(drafts.filter(d=>d.phase==='queued'))}>Kirim yang tertunda</button></div>
-        <ul className="draft-list">{drafts.map(d=><li key={d.id}><button type="button" disabled={busy || d.id === draft.id} onClick={()=>void open(d.id)}>{d.label} · {d.phase === 'draft' ? 'Draft' : d.phase === 'queued' ? 'Menunggu kirim' : 'Terkirim'} · {d.photoCount} foto lokal</button></li>)}</ul>
+    <section className="draft-home">
+      <section className="panel drafts-panel" aria-labelledby="drafts-title">
+        <h2 id="drafts-title">Draft di perangkat</h2>
+        <div className="kpis">
+          <div className="kpi"><span className="tile gold"><i className="ic ic-clock" aria-hidden="true" /></span><span><strong>{drafts.filter(d=>d.phase !== 'submitted').length}</strong><small>Belum terkirim</small></span></div>
+          <div className="kpi"><span className="tile"><i className="ic ic-camera" aria-hidden="true" /></span><span><strong>{drafts.reduce((n,d)=>n+d.photoCount,0)}</strong><small>Foto lokal</small></span></div>
+        </div>
+        <p className="hint">Draft hanya tersedia pada browser dan alamat aplikasi ini.</p>
+        <div className="photo-actions"><button type="button" disabled={busy} onClick={()=>void open()}><i className="ic ic-plus" aria-hidden="true" />Mulai inspeksi baru</button>
+        <button type="button" className="secondary" disabled={busy || !drafts.some(d=>d.phase==='queued')} onClick={()=>void send(drafts.filter(d=>d.phase==='queued'))}><i className="ic ic-sync" aria-hidden="true" />Kirim yang tertunda</button></div>
+        <ul className="rows">{drafts.map(d=>{ const [tone,icon,text]=phaseBadge[d.phase]; return <li key={d.id}><button type="button" className="row" disabled={busy || d.id === draft.id} onClick={()=>void open(d.id)}>
+          <span className="row-title">{d.label}{d.id === draft.id ? ' (sedang dibuka)' : ''}</span>
+          <span className="meta"><span className={`badge ${tone}`}><i className={`ic ic-sm ${icon}`} aria-hidden="true" />{text}</span><span><i className="ic ic-sm ic-camera" aria-hidden="true" />{d.photoCount} foto lokal</span></span>
+        </button></li>; })}</ul>
       </section>
     <form onSubmit={submit} onChange={() => { if (!locked) setStatus({ kind: 'idle', text: '' }); }}>
-      <p className="notice">Checklist usulan untuk review engineer site. Tunggu status “tersimpan di perangkat” sebelum menutup halaman. Data browser dapat terhapus oleh pengguna atau OS; ini bukan backup permanen.</p>
-      <p className={`status draft-storage ${storage.kind}`} role="status">{storage.text}</p>
       <fieldset className="form-fields" disabled={busy || locked}>
+      <div className="form-cols"><div>
+      <section className="panel" aria-labelledby="who-title">
+      <h2 id="who-title">Petugas dan area</h2>
+      <p className="notice">Checklist usulan untuk review engineer site. Tunggu status “tersimpan di perangkat” sebelum menutup halaman. Data browser dapat terhapus oleh pengguna atau OS; ini bukan backup permanen.</p>
       <label htmlFor="name">Nama petugas</label>
       <input id="name" value={name} onChange={(e) => setName(e.target.value)} maxLength={100} required />
       <p className="hint">Ketik nama petugas yang melakukan inspeksi.</p>
@@ -216,51 +227,60 @@ function InspectionForm({ db, initial, drafts, onSaved, onOpen }: { db: IDBDatab
       <label htmlFor="sub-area">Sub-area / detail lokasi (opsional)</label>
       <input id="sub-area" value={subArea} onChange={e => setSubArea(e.target.value)} maxLength={200} disabled={!areaId} aria-describedby="sub-area-hint" />
       <p id="sub-area-hint" className="hint">Isi nama blok, bench, sektor, atau bagian lokasi di dalam area yang dipilih.</p>
+      </section>
+      <ChecklistFields areaId={areaId} answers={answers} photos={photos.map((p, i) => ({ id: p.id, label: `Foto ${i + 1}${p.caption.trim() ? ` — ${p.caption.trim()}` : ''}` }))} onChange={setAnswers} />
+      </div><div>
       {areaId && <LocationPicker key={areaId} db={db} raw={draft.form.rawLocation} onDraftChange={raw=>{ if (JSON.stringify(working.current.form.rawLocation)!==JSON.stringify(raw) && !locked) updateForm({rawLocation:raw}); }} areaId={areaId} value={location} disabled={busy || locked} onChange={next => {
         updateForm({location:next,locationDirty:true}); setStatus({ kind: 'idle', text: '' });
       }} />}
-      <label htmlFor="note">Catatan kondisi</label>
-      <textarea id="note" value={note} onChange={(e) => setNote(e.target.value)} maxLength={2000} />
-      <label htmlFor="photo">Tambah foto inspeksi (maksimal 5; opsional)</label>
-      <input id="photo" type="file" accept="image/*" multiple onChange={pick} disabled={photos.length >= MAX_PHOTOS} />
-      <p className="hint">Pilih dari kamera atau galeri. Foto dikecilkan otomatis; tandai foto yang sesuai untuk setiap temuan.</p>
+      <section className="panel" aria-labelledby="photo-title">
+      <h2 id="photo-title">Foto <small>{photos.length} dari {MAX_PHOTOS}</small></h2>
+      <div className="photo-actions">
+        <label className="button secondary file-button"><i className="ic ic-camera" aria-hidden="true" />Ambil foto<input type="file" accept="image/*" capture="environment" onChange={pick} disabled={photos.length >= MAX_PHOTOS} /></label>
+        <label className="button secondary file-button"><i className="ic ic-plus" aria-hidden="true" />Dari galeri<input id="photo" type="file" accept="image/*" multiple onChange={pick} disabled={photos.length >= MAX_PHOTOS} /></label>
+      </div>
+      <p className="hint">Maksimal {MAX_PHOTOS} foto, opsional. Foto dikecilkan otomatis dan tetap di perangkat sampai terkirim; tandai foto yang sesuai untuk setiap temuan.</p>
       {photoMsg.text && <p className={`status ${photoMsg.kind}`} role="status">{photoMsg.text}</p>}
-      <div className="photo-list">
-        {photos.map((photo, i) => <section className="photo-card" key={photo.id} aria-label={`Foto ${i + 1}`}>
-          <h3>Foto {i + 1} <span className="hint">{size(photo.bytes.byteLength)}</span></h3>
-          <img src={photo.previewUrl || undefined} alt={`Pratinjau foto ${i + 1}`} className="photo-thumb" />
+      {photos.map((photo, i) => <section className="photo-card" key={photo.id} aria-label={`Foto ${i + 1}`}>
+        <h3>Foto {i + 1} <span className="hint">{size(photo.bytes.byteLength)}</span></h3>
+        <img src={photo.previewUrl || undefined} alt={`Pratinjau foto ${i + 1}`} className="photo-thumb" />
+        <div>
           <label htmlFor={`caption-${photo.id}`}>Keterangan foto {i + 1} (opsional)</label>
           <input id={`caption-${photo.id}`} value={photo.caption} maxLength={500} onChange={e => setPhotos(photos.map(p => p.id === photo.id ? { ...p, caption: e.target.value } : p))} />
-          <button type="button" onClick={() => removePhoto(photo)}>Hapus foto {i + 1}</button>
-        </section>)}
-      </div>
-      <ChecklistFields areaId={areaId} answers={answers} photos={photos.map((p, i) => ({ id: p.id, label: `Foto ${i + 1}${p.caption.trim() ? ` — ${p.caption.trim()}` : ''}` }))} onChange={setAnswers} />
-      {areaId && <p className="hint">{CHECKLISTS.notice} Pelaporan mendesak tetap melalui saluran komunikasi site.</p>}
+          <button type="button" className="secondary" onClick={() => removePhoto(photo)}><i className="ic ic-sm ic-x-circle" aria-hidden="true" />Hapus foto {i + 1}</button>
+        </div>
+      </section>)}
+      </section>
+      <section className="panel" aria-labelledby="note-title">
+      <h2 id="note-title">Catatan</h2>
+      <label htmlFor="note">Catatan kondisi</label>
+      <textarea id="note" value={note} onChange={(e) => setNote(e.target.value)} maxLength={2000} placeholder="Cuaca, kondisi permukaan, aktivitas di sekitar" />
+      </section>
+      </div></div>
       </fieldset>
       {locked && <p className="hint">Isian dikunci dalam antrean agar kiriman ulang tetap sama. Foto dan UUID dipulihkan saat aplikasi dibuka kembali. Pengiriman berjalan selama aplikasi aktif.</p>}
-      <div className="photo-actions"><button type="button" disabled={busy || submitted} onClick={()=>void persist().catch(()=>{})}>Simpan draft sekarang</button>
-      <button type="button" disabled={busy || locked} onClick={()=>void send(undefined,true)}>Simpan untuk dikirim nanti</button>
-      <button type="submit" disabled={busy || submitted}>Kirim</button></div>
-      {storage.kind === 'error' && <div className="photo-actions"><button type="button" disabled={busy} onClick={()=>void loadCurrent()}>Muat versi tersimpan</button>{!locked && <button type="button" disabled={busy} onClick={()=>void copyDraft()}>Simpan salinan baru</button>}</div>}
+      {storage.kind === 'error' && <div className="photo-actions"><button type="button" className="secondary" disabled={busy} onClick={()=>void loadCurrent()}>Muat versi tersimpan</button>{!locked && <button type="button" disabled={busy} onClick={()=>void copyDraft()}>Simpan salinan baru</button>}</div>}
       {status.text && (
         <p className={`status ${status.kind}`} role="status">
           {status.text}
         </p>
       )}
-      {submitted && draft.attempt && draft.attempt.payload.photoIds.length > 0 && <section aria-label="Foto dari server">
+      {submitted && draft.attempt && draft.attempt.payload.photoIds.length > 0 && <section className="panel" aria-label="Foto dari server" style={{ marginTop: 16 }}>
         <h2>Foto tersimpan</h2>
-        <div className="photo-actions">{draft.attempt.payload.photoIds.map((id,i)=><button type="button" key={id} onClick={()=>{setServerPhoto(i);setReadBack('');}}>Baca foto {i+1}</button>)}</div>
-        {serverPhoto !== null && <img key={serverPhoto} src={`/api/inspections/${draft.id}/photos/${draft.attempt.payload.photoIds[serverPhoto]}`} alt={`Foto ${serverPhoto+1} yang dibaca kembali dari server`} onLoad={()=>setReadBack('✔ Foto berhasil dibaca kembali dari server.')} onError={()=>setReadBack('✖ Foto tersimpan tetapi gagal dibaca kembali.')} />}
+        <div className="photo-actions">{draft.attempt.payload.photoIds.map((id,i)=><button type="button" className="secondary" key={id} onClick={()=>{setServerPhoto(i);setReadBack('');}}>Baca foto {i+1}</button>)}</div>
+        {serverPhoto !== null && <img key={serverPhoto} src={`/api/inspections/${draft.id}/photos/${draft.attempt.payload.photoIds[serverPhoto]}`} alt={`Foto ${serverPhoto+1} yang dibaca kembali dari server`} style={{ marginTop: 12, maxWidth: '100%' }} onLoad={()=>setReadBack('✔ Foto berhasil dibaca kembali dari server.')} onError={()=>setReadBack('✖ Foto tersimpan tetapi gagal dibaca kembali.')} />}
         {readBack && <p role="status">{readBack}</p>}
       </section>}
       <p className="hint">Template usulan {CHECKLISTS.templateVersion}</p>
+      <div className="actionbar">
+        <p className={`status draft-storage ${storage.kind}`} role="status">{storage.text}</p>
+        <button type="button" className="secondary" disabled={busy || submitted} onClick={()=>void persist().catch(()=>{})}>Simpan draft sekarang</button>
+        <button type="button" className="secondary" disabled={busy || locked} onClick={()=>void send(undefined,true)}>Simpan untuk dikirim nanti</button>
+        <button type="submit" disabled={busy || submitted}><i className="ic ic-sync" aria-hidden="true" />Kirim</button>
+      </div>
     </form>
     </section>
   );
-}
-
-function HistoryLink() {
-  return <p><a href="/riwayat">Riwayat inspeksi</a></p>;
 }
 
 export default function Home() {
@@ -279,9 +299,15 @@ export default function Home() {
     })();
     return ()=>{closed=true;connection?.close();};
   },[opening]);
-  return <main><h1>Inspeksi Geoteknik Harian</h1>
-    <HistoryLink />
+  return <main>
+    <div className="title-row">
+      <h1>Inspeksi Geoteknik Harian</h1>
+      <Link className="button secondary" href="/riwayat"><i className="ic ic-file-text" aria-hidden="true" />Riwayat inspeksi<i className="ic ic-sm ic-chevron-right" aria-hidden="true" /></Link>
+      <p className="hint">Catat observasi visual. Aplikasi tidak menilai kestabilan lereng.</p>
+    </div>
+    <div className="home">
     {db && <OfflineReady db={db} />}
-    {error ? <><p className="status error" role="alert">{error}</p><button onClick={()=>setOpening(n=>n+1)}>Coba penyimpanan lagi</button></> : !db || !active ? <p role="status">Memulihkan draft perangkat…</p> : <InspectionForm key={`${active.id}:${generation}`} db={db} initial={active} drafts={drafts} onSaved={async()=>setDrafts(await listDrafts(db))} onOpen={record=>{setGeneration(n=>n+1);setActive(record);}} />}
+    {error ? <><p className="status error" role="alert">{error}</p><button onClick={()=>setOpening(n=>n+1)}>Coba penyimpanan lagi</button></> : !db || !active ? <p className="status" role="status">Memulihkan draft perangkat…</p> : <InspectionForm key={`${active.id}:${generation}`} db={db} initial={active} drafts={drafts} onSaved={async()=>setDrafts(await listDrafts(db))} onOpen={record=>{setGeneration(n=>n+1);setActive(record);}} />}
+    </div>
   </main>;
 }

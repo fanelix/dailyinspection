@@ -69,9 +69,9 @@ async function snapshot(page, label) {
 async function fillDraft(page, name) {
   await page.getByLabel('Nama petugas').fill(name);
   await page.getByLabel('Area inspeksi').selectOption('pit');
-  const answers = page.getByLabel('Hasil observasi');
-  for (let i = 0; i < (await answers.count()); i++) await answers.nth(i).selectOption('not_inspected');
-  await page.locator('#coordinate-mode').selectOption('geographic');
+  const answers = page.getByRole('radio', { name: 'Tidak diperiksa' });
+  for (let i = 0; i < (await answers.count()); i++) await answers.nth(i).check();
+  await page.getByRole('radio', { name: 'WGS84 lat/long' }).check();
   await page.locator('#latitude').fill('-2');
   await page.locator('#longitude').fill('117');
   await page.getByRole('button', { name: 'Pratinjau koordinat manual' }).click();
