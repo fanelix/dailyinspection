@@ -8,8 +8,8 @@ Keputusan ini milik pengguna. Agent tidak mengisi kolom status dengan asumsi.
 
 | # | Gerbang | Status 2026-10-10 |
 |---|---|---|
-| G1 | Pemeriksaan manual Sheets T6 (`Inspections!Z`, data lama utuh) dilaporkan lulus | Menunggu pengguna |
-| G2 | Uji Android nyata (bagian 3) lulus untuk semua butir kritis | Belum; butuh perangkat dan pengguna |
+| G1 | Pemeriksaan manual Sheets T6 (`Inspections!Z`, data lama utuh) dilaporkan lulus | **Lulus menurut laporan pengguna** (2026-10-10) |
+| G2 | Uji Android nyata (bagian 3) lulus untuk semua butir kritis | **Lulus menurut laporan pengguna** (2026-10-10); lihat "Hasil uji Android" di bagian 3 |
 | G3 | Kapasitas dan batas laju diputuskan (plan §16; README "Batas laju belum ada") | Menunggu angka pengguna |
 | G4 | Keputusan merge PR #1–#5 (semua draft, bertumpuk) dan branch Production | Belum diputuskan |
 | G5 | Proyek Apps Script, Spreadsheet, folder Drive, dan secret Production dipisah dari staging | Tidak tercatat di handoff |
@@ -58,6 +58,26 @@ Catat per perangkat: model HP, versi Android, versi Chrome. Jangan catat ID UUID
 Kolom laporan: nomor, lulus/gagal/catatan, perangkat dan versi, jumlah baris `Inspections` dan `Photos` sebelum dan sesudah, dan tangkapan layar tanpa ID.
 
 **Volume pilot (plan §16):** rumus kapasitas `inspeksi/hari × foto/inspeksi × ukuran rata-rata foto`. Angka inspeksi per hari dan ukuran foto nyata harus dari pengguna. Agent tidak mengarang angka. Ukur waktu kirim per inspeksi di Android selama pilot.
+
+### Hasil uji Android — 2026-10-10
+
+**Laporan pengguna:** skenario 1–15 berjalan sesuai rencana. Perangkat Oppo Find X8, Android dan Chrome versi terbaru (nomor versi tidak dicatat). URL preview T6: `https://dailyinspection-git-codex-t6-history-fanelixs-projects.vercel.app/`. Pesan "Penyimpanan persisten belum diberikan browser" muncul (skenario 13).
+
+**Diperiksa agent di Sheets staging (baca saja):** `Inspections` 30 → 31 dan `Photos` 19 → 20 baris termasuk header. Isi baris baru:
+- satu inspeksi `submitted` revisi 2;
+- GPS petugas Android tercatat (akurasi sekitar 12,7 m);
+- lokasi objek terkonfirmasi beserta UTM WGS84 50S;
+- satu temuan dengan satu foto 632 KB berstatus `stored`, checksum sama dengan manifest;
+- prepare sampai finalisasi sekitar 15 detik;
+- tanpa baris ganda, dan baris lama utuh.
+
+**Batas bukti:**
+- Sheets hanya mengonfirmasi **satu** kiriman Android end-to-end.
+- Skenario 2 (dua foto) dan skenario 6–9 tidak bisa dibedakan dari satu record itu. Skenario 3–5, 13, dan 14 memang tidak menulis ke Sheets.
+- Pengguna memilih menerima laporannya apa adanya, bukan mengulang skenario yang meninggalkan jejak.
+- Record ini memakai nama dan GPS nyata, bukan label uji. Statusnya (observasi nyata atau uji) belum ditetapkan, jadi jangan dihapus tanpa keputusan pengguna.
+
+**Penyimpanan persisten tidak diberikan.** Ini bukan galat. Akibatnya browser dapat menghapus draft saat penyimpanan perangkat penuh atau data situs dibersihkan. Aturan operasional: kirim antrean sebelum meninggalkan perangkat, dan jangan bersihkan data situs saat masih ada draft.
 
 ## 4. Backup dan restore
 

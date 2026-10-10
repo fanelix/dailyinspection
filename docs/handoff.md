@@ -23,7 +23,14 @@
 
 **Branch:** `claude/zen-heisenberg-kcgjpu` (branch kerja yang ditetapkan sesi) belum ada di origin sebelum sesi ini. Branch itu dibuat dari `codex/t6-history` (`a5d35aa`) dan memuat riwayat T0–T6 plus T7. `codex/t6-history` tidak diubah. Tidak ada force push. Trailer commit tidak menyebut nama model.
 
-**Berikutnya:** pengguna menjalankan checklist Android dan melaporkan hasil per nomor, lalu memutuskan G3, G4, dan G5. Drill rollback atau uji restore di staging hanya dijalankan bila pengguna memberi izin. Tanpa izin itu, T7 berhenti di sini.
+**Pembaruan Android (2026-10-10):**
+- **G1 dan G2 lulus menurut laporan pengguna.** Skenario 1–15 sesuai rencana di Oppo Find X8 dengan Chrome dan Android terbaru, pada preview T6. Pesan "Penyimpanan persisten belum diberikan browser" muncul.
+- **Sheets staging (dibaca agent):** `Inspections` 30 → 31, `Photos` 19 → 20. Isinya satu inspeksi `submitted` revisi 2 dengan GPS Android, UTM 50S, dan satu foto `stored` yang checksum-nya sama dengan manifest. Tidak ada baris ganda.
+- **Batas:** hanya satu kiriman end-to-end yang terkonfirmasi. Pengguna memilih menerima laporannya apa adanya.
+- **Data:** record itu memakai nama dan GPS nyata. Statusnya belum ditetapkan, jadi jangan dihapus.
+- Rincian ada di `docs/runbook.md` bagian 3.
+
+**Berikutnya:** pengguna memutuskan G3, G4, dan G5. Drill rollback atau uji restore di staging hanya dijalankan bila pengguna memberi izin. Tanpa izin itu, T7 berhenti di sini.
 
 ## T6 dan verifikasi riwayat/review/ekspor — 10 Oktober 2026 (sesi Codespace)
 

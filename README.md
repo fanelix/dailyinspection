@@ -16,6 +16,8 @@ Hasil terakhir: **20/20 pemeriksaan lulus**. Mencakup mode pesawat (simpan, relo
 - **Belum terbukti:** Android nyata, mode pesawat OS, eviksi dan kuota OS, GPS/kamera, Sheets/Drive/Apps Script nyata, backup/restore, dan volume pilot.
 - **Rollback:** gateway T5 menolak header Inspections 26 kolom (`review_json`). Jangan rollback gateway ke sebelum T6 setelah kolom Z ada. Frontend T5 dengan gateway T6 kompatibel dari kode, belum diuji Google.
 
+**Android (2026-10-10):** pengguna melaporkan skenario 1–15 lulus di Oppo Find X8 dengan Chrome, pada preview T6. Sheets staging mengonfirmasi satu kiriman end-to-end: satu inspeksi `submitted`, satu foto dengan checksum sama dengan manifest, tanpa duplikat. Browser tidak memberi penyimpanan persisten.
+
 Checklist uji Android, prosedur backup/restore, gerbang Production G1–G7, dan rollback ada di [`docs/runbook.md`](docs/runbook.md). Tidak ada merge atau promosi Production; semua PR tetap draft.
 
 ## T6 — riwayat, review dan ekspor (2026-10-10)
