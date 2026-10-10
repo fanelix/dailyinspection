@@ -1,0 +1,11 @@
+node_modules/
+.next/
+next-env.d.ts
+*.tsbuildinfo
+.env*
+!.env.example
+.clasp.json
+.superpowers/
+public/offline-assets.json
+public/sw.js
+lib/offline-build.ts
