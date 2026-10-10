@@ -145,6 +145,16 @@ Drill rollback di staging (frontend T6 → T5, lalu kembali) **belum dijalankan*
 5. **Smoke test.** Buka domain Production, kirim satu inspeksi berlabel `Uji produksi <tanggal>`. Sheets harus bertambah tepat satu inspeksi, dan foto `stored` dengan checksum sama dengan manifest.
 6. **Pilot 3–5 hari** (G7). Pemilik menilai hasil sebelum dianggap selesai.
 
+**Status rollout 2026-10-10:**
+- Langkah 1 (backup metadata) selesai.
+- Langkah 2 (rotasi secret) belum diputuskan.
+- Langkah 3: PR #6 di-merge (`40ff92c`). Tag `v2026.10.10` belum ada di GitHub, karena push tag dari sesi agent terputus; pengguna membuatnya lewat halaman Releases.
+- Langkah 4: deployment `main` `40ff92c` dipromosikan pengguna dari "Production Staged" ke Production. Halaman riwayat T6 tampil di domain Production.
+- Langkah 5: **smoke test lulus.** Kiriman "Uji produksi 2026-10-10" (Sedimen Sump) dibaca agent di Sheets: `Inspections` 31 → 32, `Photos` 20 → 21, `submitted` revisi 2, satu foto 622 KB `stored` dengan checksum sama dengan manifest, tanpa duplikat, sekitar 13 detik dari prepare sampai finalisasi.
+- Langkah 6: pilot (G7) belum.
+
+Promosi Production di project ini manual: deployment dari `main` berstatus "Production Staged" sampai dipromosikan.
+
 **Rollback setelah rollout.** Kode Production yang lama (T1) tidak kompatibel dengan gateway sekarang (bagian 5). Jadi target rollback adalah deployment rilis yang sudah teruji:
 - Vercel Instant Rollback ke deployment Production sebelumnya dari rilis ini; atau
 - promosikan deployment preview T6 yang sudah diuji di Android (Promote to Production), bila tersedia di paket Vercel.
