@@ -1,4 +1,65 @@
-# Serah terima sesi — 2026-10-10 (T5 dan verifikasi gateway)
+# Serah terima sesi — 2026-10-10 (rilis Production T0–T7)
+
+## Rekap pindah sesi — 2026-10-10
+
+**Status:** rilis T0–T7 aktif di Production. T7 selesai kecuali **pilot 3–5 hari (G7)**. Bagian ini mengungguli status lama di bawahnya.
+
+**Kode dan rilis**
+- Mulai dari `main`. Kode rilis `40ff92c` (PR #6) dengan release `v2026.10.10`. Docs terakhir di `b808b4f` (PR #7).
+- PR #1–#5 ditutup sebagai superseded. Branch kerja agent `claude/zen-heisenberg-kcgjpu` sudah di-merge; pekerjaan baru dimulai ulang dari `main`.
+- Pemeriksaan: `npm ci`, `npm run check` (74/74), `npm run build`, dengan Node ≥ 22.18.
+- Uji browser T7: `PLAYWRIGHT_MODULE=<path playwright> node checks/t7-browser.mjs` setelah build. Hasil 20/20 dengan gateway tiruan. Tidak masuk `npm run check`.
+
+**Production**
+- Vercel Production Branch = `main`, dengan promosi manual. Deployment `main` berstatus "Production Staged" sampai di-Promote. Deployment `b808b4f` (docs saja) mungkin belum dipromosikan; aplikasinya sama.
+- Gateway Apps Script `build 2026-10-10.2`, schema 2. Tidak ada perubahan Apps Script sejak T6.
+- `GATEWAY_HMAC_SECRET` sudah dirotasi dan diuji sendiri oleh pengguna.
+- Smoke test "Uji produksi 2026-10-10" lulus, dibaca agent di Sheets: +1 inspeksi `submitted` revisi 2, +1 foto `stored` dengan checksum sama dengan manifest, tanpa duplikat.
+
+**Keputusan pengguna (2026-10-10)**
+- **G1/G2:** pemeriksaan Sheets T6 dan uji Android (Oppo Find X8, Chrome, skenario 1–15) lulus menurut laporan pengguna. Sheets mengonfirmasi satu kiriman Android end-to-end.
+- **G3:** rata-rata 3 inspeksi per hari. Batas laju belum diputuskan (usulan: batas harian di gateway, misalnya 30 per hari; belum dibuat).
+- **G4:** satu PR rilis ke `main` (sudah dijalankan).
+- **G5:** Production memakai Apps Script, Spreadsheet, dan folder Drive yang sama dengan staging. Tidak ada staging terpisah lagi. Uji harus diberi label jelas.
+- **Izin foto:** dibiarkan `anyone`/writer atas keputusan pengguna.
+- Akses tanpa aktivasi perangkat (2026-10-09) tetap berlaku.
+
+**Backup (G6)** — keduanya di akun pribadi pengguna
+- Salinan Spreadsheet "BACKUP 2026-10-10 sebelum Production" (Inspections 31 / Photos 20 baris, identik dengan sumber).
+- Folder "BACKUP foto 2026-10-10 sebelum pilot": 9 dari 12 foto `stored`, ukuran sama dengan Sheet. Tiga JPEG uji 22 byte tidak ditemukan Drive.
+- Ini titik pulih sekali saja. Foto pilot sesudahnya belum tercakup.
+
+**Data di Spreadsheet**
+- Repo ini publik: jangan menulis ID Spreadsheet, ID file Drive, atau UUID inspeksi/foto ke repo. Minta tautan Sheet ke pengguna bila perlu memeriksa.
+- Sesi agent bisa membaca Sheet lewat konektor Google Sheets setelah pengguna memberi tautannya.
+- Record yang perlu diketahui:
+  - "Alfan / Pit C": nama dan GPS nyata; statusnya (observasi nyata atau uji) belum ditetapkan, jadi jangan dihapus.
+  - "Uji produksi 2026-10-10": smoke test.
+  - Kiriman uji rotasi dari pengguna, tidak diperiksa agent.
+  - Baris uji lama T1–T6. Pembersihan menunggu keputusan pengguna.
+
+**Rollback**
+- Hanya lewat Vercel: Instant Rollback, atau promosikan deployment rilis yang sudah teruji.
+- Jangan rollback gateway ke sebelum T6, karena gateway T5 menolak header Inspections 26 kolom.
+- Kode T1 lama tidak kompatibel dengan gateway sekarang.
+
+**Batas lingkungan sesi agent (cloud)**
+- `*.vercel.app` dan Vercel tidak terjangkau.
+- Push tag terputus; buat tag lewat GitHub Releases.
+- Push branch ke branch kerja sesi berhasil.
+- `git fetch` sempat diblokir pengklasifikasi izin sekali, lalu berhasil.
+- Konektor Drive yang tersambung memakai akun pribadi pengguna, sedangkan pemilik file Production adalah akun perusahaan.
+
+**Terbuka**
+1. Pilot 3–5 hari (G7), lalu penilaian pemilik (tidak ada kehilangan atau duplikasi yang belum terselesaikan).
+2. Batas laju.
+3. Backup foto jangka panjang di lokasi resmi perusahaan.
+4. Pembersihan data uji dan status record "Alfan / Pit C".
+5. Foto penutupan review (ditunda; mengubah invarian manifest T4).
+
+**Prompt awal sesi berikutnya (saran):**
+> Lanjutkan repo https://github.com/fanelix/dailyinspection dari `main` terbaru. Baca AGENTS.md, CLAUDE.md, docs/handoff.md (Rekap pindah sesi), docs/runbook.md, docs/plan.md, dan README.md. Status: rilis T0–T7 aktif di Production; sisa pilot G7. Verifikasi cepat `npm ci`, `npm run check` (74/74), dan `npm run build` dengan Node ≥ 22.18, lalu tunggu arahan saya. Jangan ubah izin foto, login/aktivasi, gateway, atau merge/promote tanpa perintah.
+
 
 ## T7 — uji browser, backup/restore, dan rollout (2026-10-10, sesi ini)
 
