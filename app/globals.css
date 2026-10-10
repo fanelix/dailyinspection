@@ -91,3 +91,8 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
 .photo-card button { margin-top: 12px; }
 .photo-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .photo-actions button { width: auto; margin-top: 0; }
+
+.draft-list { list-style: none; padding: 0; max-height: 15rem; overflow: auto; }
+.draft-list li { margin: .4rem 0; }
+.draft-list button { width: 100%; text-align: left; }
+.draft-storage { position: sticky; top: 0; z-index: 1001; background: #fff; padding: .7rem; border: 1px solid #d1d5db; }

@@ -1,22 +1,20 @@
 'use client';
 
-// T4: many photos, immutable retries, and server-verified finalization. Offline drafts remain T5.
+// T5: durable form/photo snapshots and foreground queue; server protocol stays T4.
 import { useEffect, useRef, useState } from 'react';
 import type { ChangeEvent, FormEvent } from 'react';
 import { compressPhoto, sha256Hex } from '../lib/photos.ts';
-import { CHECKLISTS, emptyAnswers, parseChecklist } from '../lib/inspection.ts';
+import { CHECKLISTS, emptyAnswers } from '../lib/inspection.ts';
 import type { ChecklistAnswer } from '../lib/inspection.ts';
 import ChecklistFields from '../components/ChecklistFields.tsx';
-import { submitInspection } from '../lib/submission.ts';
-import type { SubmissionAttempt } from '../lib/submission.ts';
+import { copyDraft as saveCopy, DraftConflict, draftError, listDrafts, makeAttempt, newDraft, openDrafts, readDraft, saveDraft, sendQueue } from '../lib/drafts.ts';
+import type { Draft, DraftForm, DraftPhoto, DraftSummary } from '../lib/drafts.ts';
 import LocationPicker from '../components/LocationPicker.tsx';
-import { parseLocation } from '../lib/location.ts';
-import type { InspectionLocation } from '../lib/location.ts';
+import OfflineReady from '../components/OfflineReady.tsx';
 
 const TRIES = 3; // usulan rencana §9: tiga percobaan dengan jeda bertambah
 const BACKOFF_MS = 1000;
 const REQUEST_TIMEOUT_MS = 90_000; // usulan; ukur di staging
-const JSON_HEADERS = { 'content-type': 'application/json' };
 
 class ApiError extends Error {
   status: number;
@@ -54,32 +52,76 @@ async function api(path: string, init: RequestInit) {
 type Status = { kind: 'idle' | 'busy' | 'ok' | 'error'; text: string };
 
 // Salinan kerja foto yang sudah dikompres; checksum dan ID dihitung dari byte ini, bukan dari file asli.
-type Prepared = { id: string; bytes: ArrayBuffer; sha256: string; previewUrl: string; caption: string };
+type Prepared = DraftPhoto & { previewUrl: string };
 const MAX_PHOTOS = 5; // usulan §8, sama dengan gateway
 
 const size = (n: number) =>
   n < 1024 * 1024 ? `${Math.max(1, Math.round(n / 1024))} KB` : `${(n / 1024 / 1024).toLocaleString('id-ID', { maximumFractionDigits: 1 })} MB`;
 
-function InspectionForm({ onNew }: { onNew: () => void }) {
-  const [name, setName] = useState('');
-  const [note, setNote] = useState('');
-  const [areaId, setAreaId] = useState('');
-  const [subArea, setSubArea] = useState('');
-  const [answers, setAnswers] = useState<ChecklistAnswer[]>([]);
-  const [location, setLocation] = useState<InspectionLocation | null>(null);
-  const [locationDirty, setLocationDirty] = useState(false);
-  const [photos, setPhotos] = useState<Prepared[]>([]);
+function InspectionForm({ db, initial, drafts, onSaved, onOpen }: { db: IDBDatabase; initial: Draft; drafts: DraftSummary[]; onSaved: () => Promise<void>; onOpen: (draft: Draft) => void }) {
+  const [draft, setDraft] = useState(initial);
+  const working = useRef(initial), revision = useRef(initial.revision), saves = useRef(Promise.resolve(initial));
+  const savedForm = useRef(initial.form), savedPhotos = useRef(initial.photos), conflict = useRef(false);
+  const [storage, setStorage] = useState<Status>({ kind: 'ok', text: '✔ Draft dipulihkan dari perangkat.' });
   const [photoMsg, setPhotoMsg] = useState<Status>({ kind: 'idle', text: '' });
-  const [status, setStatus] = useState<Status>({ kind: 'idle', text: '' });
-  const [locked, setLocked] = useState(false);
-  const [submitted, setSubmitted] = useState(false);
+  const [status, setStatus] = useState<Status>({ kind: 'idle', text: initial.lastError });
   const [serverPhoto, setServerPhoto] = useState<number | null>(null);
   const [readBack, setReadBack] = useState('');
-  const attempt = useRef<(SubmissionAttempt & { key: string }) | null>(null);
-  const previews = useRef<Prepared[]>([]);
-  useEffect(() => { previews.current = photos; }, [photos]);
-  useEffect(() => () => { previews.current.forEach(p => URL.revokeObjectURL(p.previewUrl)); }, []);
-
+  const [previews, setPreviews] = useState<Record<string,string>>({});
+  const urls = useRef<Record<string,string>>({});
+  const { name, note, areaId, subArea, answers, location, locationDirty } = draft.form;
+  const locked = draft.phase !== 'draft', submitted = draft.phase === 'submitted';
+  const photos: Prepared[] = draft.photos.map(p => ({ ...p, previewUrl: previews[p.id] ?? '' }));
+  function edit(change: Partial<Draft>) {
+    const next = { ...working.current, ...change }; working.current = next; setDraft(next);
+    setStorage({kind:'busy',text:'Isian berubah; menunggu penyimpanan…'});
+  }
+  function updateForm(change: Partial<DraftForm>) { edit({form:{...working.current.form,...change}}); }
+  const setName = (name: string) => updateForm({name}), setNote = (note: string) => updateForm({note});
+  const setSubArea = (subArea: string) => updateForm({subArea}), setAnswers = (answers: ChecklistAnswer[]) => updateForm({answers});
+  const setPhotos = (photos: DraftPhoto[]) => edit({photos:photos.map(({id,bytes,sha256,caption})=>({id,bytes,sha256,caption}))});
+  async function persist() {
+    const operation = async () => {
+      if (conflict.current) throw new DraftConflict();
+      const snapshot = working.current;
+      if (snapshot.revision > 0 && snapshot.form === savedForm.current && snapshot.photos === savedPhotos.current) return snapshot;
+      const saved = await saveDraft(db, {...snapshot,revision:revision.current}, revision.current);
+      revision.current = saved.revision; savedForm.current = snapshot.form; savedPhotos.current = snapshot.photos;
+      working.current = {...working.current,revision:saved.revision,updatedAt:saved.updatedAt}; setDraft(working.current);
+      setStorage({kind:'ok',text:`✔ Draft dan ${snapshot.photos.length} foto tersimpan di perangkat (${new Date(saved.updatedAt).toLocaleTimeString('id-ID')}).`});
+      await onSaved(); return saved;
+    };
+    const pending = saves.current.then(operation,operation); saves.current = pending;
+    try { return await pending; } catch (err) { conflict.current = err instanceof DraftConflict; setStorage({kind:'error',text:draftError(err)}); throw err; }
+  }
+  useEffect(() => {
+    if (draft.form === savedForm.current && draft.photos === savedPhotos.current) return;
+    const timer = setTimeout(() => { void persist().catch(()=>{}); }, 500);
+    return () => clearTimeout(timer);
+  }, [draft.form,draft.photos]);
+  useEffect(() => {
+    const next: Record<string,string> = {};
+    for (const p of draft.photos) next[p.id] = urls.current[p.id] ?? URL.createObjectURL(new Blob([p.bytes],{type:'image/jpeg'}));
+    for (const [id,url] of Object.entries(urls.current)) if (!(id in next)) URL.revokeObjectURL(url);
+    urls.current = next; setPreviews(next);
+  }, [draft.photos]);
+  useEffect(() => () => { Object.values(urls.current).forEach(url=>URL.revokeObjectURL(url)); }, []);
+  useEffect(() => {
+    const warning = (e: BeforeUnloadEvent) => { if (working.current.form !== savedForm.current || working.current.photos !== savedPhotos.current) e.preventDefault(); };
+    window.addEventListener('beforeunload',warning); return () => window.removeEventListener('beforeunload',warning);
+  }, []);
+  async function open(id?: string) {
+    try { await persist(); const next = id ? await readDraft(db,id) : await saveDraft(db,newDraft(),0); await onSaved(); onOpen(next); }
+    catch (err) { setStorage({kind:'error',text:draftError(err)}); }
+  }
+  async function loadCurrent() {
+    try { onOpen(await readDraft(db,draft.id)); } catch (err) { setStorage({kind:'error',text:draftError(err)}); }
+  }
+  async function copyDraft() {
+    if (working.current.phase !== 'draft') return;
+    try { const copy = await saveCopy(db,working.current); await onSaved(); onOpen(copy); }
+    catch (err) { setStorage({kind:'error',text:draftError(err)}); }
+  }
   // Decode sequentially. A bad batch leaves previously selected photos and finding links intact.
   async function pick(e: ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.target.files ?? []);
@@ -92,68 +134,73 @@ function InspectionForm({ onNew }: { onNew: () => void }) {
       for (const file of files) {
         const out = await compressPhoto(file), bytes = await out.blob.arrayBuffer();
         const sha256 = await sha256Hex(bytes);
-        added.push({ id: crypto.randomUUID(), bytes, sha256, previewUrl: URL.createObjectURL(out.blob), caption: '' });
+        added.push({ id: crypto.randomUUID(), bytes, sha256, previewUrl: '', caption: '' });
       }
       setPhotos([...photos, ...added]);
       setPhotoMsg({ kind: 'ok', text: `✔ ${photos.length + added.length} foto siap. Foto asli di galeri tetap tersedia.` });
     } catch (err) {
-      added.forEach(p => URL.revokeObjectURL(p.previewUrl));
       setPhotoMsg({ kind: 'error', text: `✖ ${errorText(err)} Pilihan sebelumnya tetap tersedia.` });
     }
   }
 
   function removePhoto(photo: Prepared) {
-    URL.revokeObjectURL(photo.previewUrl);
     setPhotos(photos.filter(p => p.id !== photo.id));
     setAnswers(answers.map(a => a.finding ? { ...a, finding: { ...a.finding, photoIds: a.finding.photoIds.filter(id => id !== photo.id) } } : a));
     setPhotoMsg({ kind: 'idle', text: '' }); setStatus({ kind: 'idle', text: '' });
   }
 
-  async function submit(e: FormEvent) {
-    e.preventDefault();
-    if (submitted) return;
-    if (!name.trim()) return setStatus({ kind: 'error', text: '✖ Isi nama petugas.' });
-    setStatus({ kind: 'busy', text: 'Menyiapkan…' });
+  async function send(records?: DraftSummary[], defer = false) {
+    if (!navigator.locks) { setStatus({kind:'error',text:'Browser belum mendukung pengiriman aman antar-tab. Draft tetap tersimpan; gunakan Chrome terbaru.'}); return; }
+    setStatus({kind:'busy',text:'Menyiapkan antrean…'});
     try {
-      if (!location) throw new Error('Pilih dan konfirmasi lokasi objek sebelum mengirim.');
-      const confirmedLocation = parseLocation(location, areaId);
-      const key = JSON.stringify([name.trim(), note, areaId, subArea.trim(), answers, photos.map(p => [p.id, p.sha256, p.caption.trim()]), confirmedLocation]);
-      if (attempt.current?.key !== key) {
-        const photoIds = photos.map(() => crypto.randomUUID());
-        const checklist = parseChecklist({ schemaVersion: CHECKLISTS.schemaVersion, templateVersion: CHECKLISTS.templateVersion, areaId, subArea, photoIds,
-          answers: answers.map(a => a.finding ? { ...a, finding: { ...a.finding,
-            photoIds: a.finding.photoIds.map(id => photoIds[photos.findIndex(p => p.id === id)]) } } : a) });
-        const preparedPhotos = photos.map((p, i) => ({ photoId: photoIds[i], sha256: p.sha256, size: p.bytes.byteLength, caption: p.caption.trim(), bytes: p.bytes }));
-        const photoManifest = preparedPhotos.map(({ bytes: _bytes, ...metadata }) => metadata);
-        const hashJson = (v: unknown) => sha256Hex(new TextEncoder().encode(JSON.stringify(v)).buffer);
-        attempt.current = { key, photos: preparedPhotos,
-          payload: { submissionVersion: 1, inspectionId: crypto.randomUUID(), inspectorName: name.trim(), note, observedAt: new Date().toISOString(), photoIds, photoManifest, ...checklist, location: confirmedLocation },
-          checklistSha256: await hashJson(checklist), locationSha256: await hashJson(confirmedLocation), photoManifestSha256: await hashJson(photoManifest),
+      await persist();
+      await navigator.locks.request('dailyinspection-send', {ifAvailable:true}, async lock => {
+        if (!lock) throw new Error('Pengiriman berjalan di tab lain. Tunggu, lalu muat versi tersimpan.');
+        const updateRecord = (record: Draft) => {
+          if (record.id !== draft.id) return;
+          working.current=record;revision.current=record.revision;savedForm.current=record.form;savedPhotos.current=record.photos;setDraft(record);
+          if(record.phase === 'draft') onOpen(record);
         };
-      }
-      // Freeze before the first request: even an unknown prepare result must retry the same IDs/content.
-      setLocked(true);
-      const done = await submitInspection(attempt.current, api, text => setStatus({ kind: 'busy', text }));
-      setSubmitted(true);
-      setStatus({ kind: 'ok', text: `✔ Inspeksi terkirim dan difinalisasi di server. ${photos.length} foto tersimpan.${done.reviewRequired ? ' Perlu review: ada temuan tanpa foto.' : ''}` });
-      if (photos.length) setServerPhoto(0);
+        if (defer) {
+          const current=await readDraft(db,draft.id);
+          if(current.revision !== revision.current) throw new DraftConflict();
+          const attempt=await makeAttempt(current);
+          updateRecord(await saveDraft(db,{...current,attempt,phase:'queued',lastError:''},current.revision));
+        } else {
+          await sendQueue(db,records ?? [{id:draft.id,revision:revision.current}],api,text=>setStatus({kind:'busy',text}),updateRecord);
+        }
+        await onSaved();
+        setStorage({kind:'ok',text:'✔ Snapshot pengiriman tersimpan di perangkat.'});
+        setStatus({kind:'ok',text:defer ? '✔ Kiriman disimpan dalam antrean. Tekan Kirim yang tertunda saat ada jaringan.' : '✔ Inspeksi terkirim dan difinalisasi di server. Acknowledgment tersimpan di perangkat.'});
+      });
     } catch (err) {
-      // This code proves no inspection was written. An outdated gateway may follow an earlier
-      // successful/unknown request or rollback, so it must keep the same attempt on retry.
-      if (err instanceof ApiError && err.code === 'LOCATION_CHANGED') {
-        setLocked(false); attempt.current = null;
-      }
-      const unknown = err instanceof ApiError && (err.status === 0 || err.status === 504);
-      setStatus({ kind: 'error', text: unknown
-        ? '✖ Hasil pengiriman belum diketahui. Tekan Kirim lagi dengan isian yang sama untuk melanjutkan tanpa duplikasi.'
-        : `✖ ${errorText(err)}${attempt.current ? ' Isian dan foto tetap tersedia di halaman ini untuk dicoba lagi.' : ''}` });
+      if (err instanceof DraftConflict) { conflict.current=true;setStorage({kind:'error',text:draftError(err)}); }
+      // The durable record is authoritative after a failed/unknown request. Never create replacement UUIDs.
+      try {
+        const latest=await readDraft(db,draft.id);
+        if (latest.phase === 'queued' && !conflict.current) {
+          working.current=latest;revision.current=latest.revision;savedForm.current=latest.form;savedPhotos.current=latest.photos;setDraft(latest);
+        }
+        await onSaved();
+      } catch { /* Leave the in-memory copy and durable queue intact if storage becomes unavailable. */ }
+      setStatus({kind:'error',text:`✖ ${errorText(err)} Kiriman yang sudah masuk antrean memakai ID yang sama saat dicoba lagi.`});
     }
   }
+  async function submit(e: FormEvent) { e.preventDefault(); if (!submitted) await send(); }
 
   const busy = status.kind === 'busy' || photoMsg.kind === 'busy';
   return (
+    <section>
+      <section aria-label="Draft di perangkat">
+        <h2>Draft di perangkat</h2>
+        <p>{drafts.filter(d=>d.phase !== 'submitted').length} belum terkirim. Draft hanya tersedia pada browser dan alamat aplikasi ini.</p>
+        <div className="photo-actions"><button type="button" disabled={busy} onClick={()=>void open()}>Mulai inspeksi baru</button>
+        <button type="button" disabled={busy || !drafts.some(d=>d.phase==='queued')} onClick={()=>void send(drafts.filter(d=>d.phase==='queued'))}>Kirim yang tertunda</button></div>
+        <ul className="draft-list">{drafts.map(d=><li key={d.id}><button type="button" disabled={busy || d.id === draft.id} onClick={()=>void open(d.id)}>{d.label} · {d.phase === 'draft' ? 'Draft' : d.phase === 'queued' ? 'Menunggu kirim' : 'Terkirim'} · {d.photoCount} foto lokal</button></li>)}</ul>
+      </section>
     <form onSubmit={submit} onChange={() => { if (!locked) setStatus({ kind: 'idle', text: '' }); }}>
-      <p className="notice">Checklist usulan untuk review engineer site. Isian belum tersimpan bila halaman ditutup sebelum berhasil dikirim.</p>
+      <p className="notice">Checklist usulan untuk review engineer site. Tunggu status “tersimpan di perangkat” sebelum menutup halaman. Data browser dapat terhapus oleh pengguna atau OS; ini bukan backup permanen.</p>
+      <p className={`status draft-storage ${storage.kind}`} role="status">{storage.text}</p>
       <fieldset className="form-fields" disabled={busy || locked}>
       <label htmlFor="name">Nama petugas</label>
       <input id="name" value={name} onChange={(e) => setName(e.target.value)} maxLength={100} required />
@@ -161,7 +208,7 @@ function InspectionForm({ onNew }: { onNew: () => void }) {
       <label htmlFor="area">Area inspeksi</label>
       <select id="area" value={areaId} required onChange={e => {
         if ((answers.some(a => a.answer !== null) || subArea.trim() || locationDirty) && !window.confirm('Ganti area dan kosongkan lokasi, sub-area serta jawaban checklist area sebelumnya?')) return;
-        setAreaId(e.target.value); setSubArea(''); setAnswers(emptyAnswers(e.target.value)); setLocation(null); setLocationDirty(false);
+        updateForm({areaId:e.target.value,subArea:'',answers:emptyAnswers(e.target.value),location:null,rawLocation:null,locationDirty:false});
       }}>
         <option value="">Pilih area…</option>
         {CHECKLISTS.areas.map(area => <option key={area.id} value={area.id}>{area.label}</option>)}
@@ -169,8 +216,8 @@ function InspectionForm({ onNew }: { onNew: () => void }) {
       <label htmlFor="sub-area">Sub-area / detail lokasi (opsional)</label>
       <input id="sub-area" value={subArea} onChange={e => setSubArea(e.target.value)} maxLength={200} disabled={!areaId} aria-describedby="sub-area-hint" />
       <p id="sub-area-hint" className="hint">Isi nama blok, bench, sektor, atau bagian lokasi di dalam area yang dipilih.</p>
-      {areaId && <LocationPicker key={areaId} areaId={areaId} value={location} disabled={busy || locked} onChange={next => {
-        setLocation(next); setLocationDirty(true); setStatus({ kind: 'idle', text: '' });
+      {areaId && <LocationPicker key={areaId} db={db} raw={draft.form.rawLocation} onDraftChange={raw=>{ if (JSON.stringify(working.current.form.rawLocation)!==JSON.stringify(raw) && !locked) updateForm({rawLocation:raw}); }} areaId={areaId} value={location} disabled={busy || locked} onChange={next => {
+        updateForm({location:next,locationDirty:true}); setStatus({ kind: 'idle', text: '' });
       }} />}
       <label htmlFor="note">Catatan kondisi</label>
       <textarea id="note" value={note} onChange={(e) => setNote(e.target.value)} maxLength={2000} />
@@ -181,7 +228,7 @@ function InspectionForm({ onNew }: { onNew: () => void }) {
       <div className="photo-list">
         {photos.map((photo, i) => <section className="photo-card" key={photo.id} aria-label={`Foto ${i + 1}`}>
           <h3>Foto {i + 1} <span className="hint">{size(photo.bytes.byteLength)}</span></h3>
-          <img src={photo.previewUrl} alt={`Pratinjau foto ${i + 1}`} className="photo-thumb" />
+          <img src={photo.previewUrl || undefined} alt={`Pratinjau foto ${i + 1}`} className="photo-thumb" />
           <label htmlFor={`caption-${photo.id}`}>Keterangan foto {i + 1} (opsional)</label>
           <input id={`caption-${photo.id}`} value={photo.caption} maxLength={500} onChange={e => setPhotos(photos.map(p => p.id === photo.id ? { ...p, caption: e.target.value } : p))} />
           <button type="button" onClick={() => removePhoto(photo)}>Hapus foto {i + 1}</button>
@@ -190,39 +237,46 @@ function InspectionForm({ onNew }: { onNew: () => void }) {
       <ChecklistFields areaId={areaId} answers={answers} photos={photos.map((p, i) => ({ id: p.id, label: `Foto ${i + 1}${p.caption.trim() ? ` — ${p.caption.trim()}` : ''}` }))} onChange={setAnswers} />
       {areaId && <p className="hint">{CHECKLISTS.notice} Pelaporan mendesak tetap melalui saluran komunikasi site.</p>}
       </fieldset>
-      {locked && <p className="hint">Isian dikunci untuk menjaga kiriman ulang tetap sama. Jangan tutup halaman saat pengiriman belum dikonfirmasi.</p>}
-      <button type="submit" disabled={busy || submitted}>Kirim</button>
+      {locked && <p className="hint">Isian dikunci dalam antrean agar kiriman ulang tetap sama. Foto dan UUID dipulihkan saat aplikasi dibuka kembali. Pengiriman berjalan selama aplikasi aktif.</p>}
+      <div className="photo-actions"><button type="button" disabled={busy || submitted} onClick={()=>void persist().catch(()=>{})}>Simpan draft sekarang</button>
+      <button type="button" disabled={busy || locked} onClick={()=>void send(undefined,true)}>Simpan untuk dikirim nanti</button>
+      <button type="submit" disabled={busy || submitted}>Kirim</button></div>
+      {storage.kind === 'error' && <div className="photo-actions"><button type="button" disabled={busy} onClick={()=>void loadCurrent()}>Muat versi tersimpan</button>{!locked && <button type="button" disabled={busy} onClick={()=>void copyDraft()}>Simpan salinan baru</button>}</div>}
       {status.text && (
         <p className={`status ${status.kind}`} role="status">
           {status.text}
         </p>
       )}
-      {submitted && photos.length > 0 && <section aria-label="Foto dari server">
+      {submitted && draft.attempt && draft.attempt.payload.photoIds.length > 0 && <section aria-label="Foto dari server">
         <h2>Foto tersimpan</h2>
-        <div className="photo-actions">{photos.map((p, i) => <button type="button" key={p.id} onClick={() => { setServerPhoto(i); setReadBack(''); }}>Baca foto {i + 1}</button>)}</div>
-        {serverPhoto !== null && attempt.current && <img
-          key={serverPhoto} src={`/api/inspections/${attempt.current.payload.inspectionId}/photos/${attempt.current.photos[serverPhoto].photoId}`}
-          alt={`Foto ${serverPhoto + 1} yang dibaca kembali dari server`}
-          onLoad={() => setReadBack('✔ Foto berhasil dibaca kembali dari server.')}
-          onError={() => setReadBack('✖ Foto tersimpan tetapi gagal dibaca kembali.')}
-        />}
+        <div className="photo-actions">{draft.attempt.payload.photoIds.map((id,i)=><button type="button" key={id} onClick={()=>{setServerPhoto(i);setReadBack('');}}>Baca foto {i+1}</button>)}</div>
+        {serverPhoto !== null && <img key={serverPhoto} src={`/api/inspections/${draft.id}/photos/${draft.attempt.payload.photoIds[serverPhoto]}`} alt={`Foto ${serverPhoto+1} yang dibaca kembali dari server`} onLoad={()=>setReadBack('✔ Foto berhasil dibaca kembali dari server.')} onError={()=>setReadBack('✖ Foto tersimpan tetapi gagal dibaca kembali.')} />}
         {readBack && <p role="status">{readBack}</p>}
       </section>}
-      {locked && <button type="button" disabled={busy} onClick={() => {
-        if (!submitted && !window.confirm('Mulai inspeksi baru? Kiriman sebelumnya belum dikonfirmasi selesai dan isian di halaman ini akan dikosongkan.')) return;
-        onNew();
-      }}>Mulai inspeksi baru</button>}
       <p className="hint">Template usulan {CHECKLISTS.templateVersion}</p>
     </form>
+    </section>
   );
 }
 
 export default function Home() {
-  const [formKey, setFormKey] = useState(0);
-  return (
-    <main>
-      <h1>Inspeksi Geoteknik Harian</h1>
-      <InspectionForm key={formKey} onNew={() => setFormKey(k => k + 1)} />
-    </main>
-  );
+  const [db,setDb]=useState<IDBDatabase|null>(null),[active,setActive]=useState<Draft|null>(null),[drafts,setDrafts]=useState<DraftSummary[]>([]),[error,setError]=useState('');
+  const [opening,setOpening]=useState(0),[generation,setGeneration]=useState(0);
+  useEffect(()=>{
+    let closed=false,connection:IDBDatabase|null=null;
+    void (async()=>{
+      try {
+        connection=await openDrafts();const existing=await listDrafts(connection);
+        const id=existing.find(d=>d.phase!=='submitted')?.id ?? existing[0]?.id;
+        const initial=id ? await readDraft(connection,id) : await saveDraft(connection,newDraft(),0);
+        if (closed) {connection.close();return;}
+        setDb(connection);setActive(initial);setDrafts(await listDrafts(connection));setError('');
+      } catch(err) {if(!closed)setError(draftError(err));}
+    })();
+    return ()=>{closed=true;connection?.close();};
+  },[opening]);
+  return <main><h1>Inspeksi Geoteknik Harian</h1>
+    {db && <OfflineReady db={db} />}
+    {error ? <><p className="status error" role="alert">{error}</p><button onClick={()=>setOpening(n=>n+1)}>Coba penyimpanan lagi</button></> : !db || !active ? <p role="status">Memulihkan draft perangkat…</p> : <InspectionForm key={`${active.id}:${generation}`} db={db} initial={active} drafts={drafts} onSaved={async()=>setDrafts(await listDrafts(db))} onOpen={record=>{setGeneration(n=>n+1);setActive(record);}} />}
+  </main>;
 }

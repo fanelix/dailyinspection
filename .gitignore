@@ -5,3 +5,7 @@ next-env.d.ts
 .env*
 !.env.example
 .clasp.json
+.superpowers/
+public/offline-assets.json
+public/sw.js
+lib/offline-build.ts

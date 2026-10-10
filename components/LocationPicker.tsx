@@ -2,22 +2,24 @@
 import { useEffect, useRef, useState } from 'react';
 import { coordinateInput, gpsErrorMessage, locationGeoJson, parseLocation, parseSavedLocation, utmInput, utmToWgs84, wgs84ToUtm } from '../lib/location.ts';
 import type { GpsPoint, InspectionLocation, ObjectPoint, SavedLocation } from '../lib/location.ts';
+import { masterData } from '../lib/drafts.ts';
+import type { RawLocation } from '../lib/drafts.ts';
 import utmCrs from '../config/utm-crs.json';
 import LocationMap from './LocationMap.tsx';
 
-export default function LocationPicker({ areaId, value, disabled, onChange }: { areaId: string; value: InspectionLocation | null; disabled: boolean; onChange: (location: InspectionLocation | null) => void }) {
-  const [observer, setObserver] = useState<GpsPoint | null>(null);
-  const [point, setPoint] = useState<ObjectPoint | null>(null);
-  const [latitude, setLatitude] = useState('');
-  const [longitude, setLongitude] = useState('');
-  const [coordinateMode, setCoordinateMode] = useState('utm');
-  const [datum, setDatum] = useState('WGS84');
-  const [zone, setZone] = useState('');
-  const [hemisphere, setHemisphere] = useState('');
-  const [easting, setEasting] = useState('');
-  const [northing, setNorthing] = useState('');
+export default function LocationPicker({ areaId, value, disabled, onChange, db, raw, onDraftChange }: { areaId: string; value: InspectionLocation | null; disabled: boolean; onChange: (location: InspectionLocation | null) => void; db: IDBDatabase; raw: RawLocation | null; onDraftChange: (raw: RawLocation) => void }) {
+  const [observer, setObserver] = useState<GpsPoint | null>(raw?.observer ?? value?.observerGps ?? null);
+  const [point, setPoint] = useState<ObjectPoint | null>(raw?.point ?? value?.object ?? null);
+  const [latitude, setLatitude] = useState(raw?.latitude ?? (value ? String(value.object.latitude) : ''));
+  const [longitude, setLongitude] = useState(raw?.longitude ?? (value ? String(value.object.longitude) : ''));
+  const [coordinateMode, setCoordinateMode] = useState(raw?.coordinateMode ?? 'utm');
+  const [datum, setDatum] = useState(raw?.datum ?? value?.object.utm?.datum ?? 'WGS84');
+  const [zone, setZone] = useState(raw?.zone ?? (value?.object.utm ? String(value.object.utm.zone) : ''));
+  const [hemisphere, setHemisphere] = useState(raw?.hemisphere ?? value?.object.utm?.hemisphere ?? '');
+  const [easting, setEasting] = useState(raw?.easting ?? (value?.object.utm ? String(value.object.utm.easting) : ''));
+  const [northing, setNorthing] = useState(raw?.northing ?? (value?.object.utm ? String(value.object.utm.northing) : ''));
   const [saved, setSaved] = useState<SavedLocation[]>([]);
-  const [selected, setSelected] = useState('');
+  const [selected, setSelected] = useState(raw?.selected ?? value?.object.savedLocation?.id ?? '');
   const [masterMessage, setMasterMessage] = useState('Memuat lokasi tersimpan…');
   const [reloadKey, setReloadKey] = useState(0);
   const [gpsMessage, setGpsMessage] = useState('');
@@ -26,17 +28,33 @@ export default function LocationPicker({ areaId, value, disabled, onChange }: { 
   const disabledRef = useRef(disabled);
   useEffect(() => { disabledRef.current = disabled; if (disabled) gpsToken.current++; }, [disabled]);
   useEffect(() => () => { gpsToken.current++; }, []);
+  const draftCallback = useRef(onDraftChange);
+  useEffect(() => { draftCallback.current = onDraftChange; }, [onDraftChange]);
+  useEffect(() => { draftCallback.current({ observer, point, latitude, longitude, coordinateMode, datum, zone, hemisphere, easting, northing, selected }); }, [observer, point, latitude, longitude, coordinateMode, datum, zone, hemisphere, easting, northing, selected]);
   useEffect(() => {
     const controller = new AbortController();
-    fetch(`/api/locations?areaId=${encodeURIComponent(areaId)}`, { signal: AbortSignal.any([controller.signal, AbortSignal.timeout(30000)]), cache: 'no-store' })
-      .then(async res => {
+    void (async () => {
+      let cached = false;
+      try {
+        const local = await masterData(db, areaId);
+        if (local && !controller.signal.aborted) {
+          setSaved(local.locations.map(l => parseSavedLocation(l, areaId))); cached = true;
+          setMasterMessage(`Salinan lokasi di perangkat, diperbarui ${new Date(local.updatedAt).toLocaleString('id-ID')}. Server memeriksa revisi saat dikirim.`);
+        }
+        const res = await fetch(`/api/locations?areaId=${encodeURIComponent(areaId)}`, { signal: AbortSignal.any([controller.signal, AbortSignal.timeout(30000)]), cache: 'no-store' });
         const body = await res.json();
         if (!res.ok || !body.ok || !Array.isArray(body.locations)) throw new Error('Daftar lokasi tidak tersedia.');
         const locations = body.locations.map((l: unknown) => parseSavedLocation(l, areaId));
-        if (!controller.signal.aborted) { setSaved(locations); setMasterMessage(locations.length ? '' : 'Belum ada lokasi tersimpan untuk area ini.'); }
-      }).catch(() => { if (!controller.signal.aborted) setMasterMessage('Daftar lokasi tersimpan belum dapat dimuat. GPS, pin, dan koordinat manual tetap tersedia.'); });
+        if (controller.signal.aborted) return;
+        setSaved(locations);
+        await masterData(db, areaId, { areaId, locations, updatedAt: new Date().toISOString() });
+        if (!controller.signal.aborted) setMasterMessage(locations.length ? 'Daftar lokasi tersimpan di perangkat.' : 'Belum ada lokasi tersimpan untuk area ini. Daftar kosong terverifikasi tersimpan di perangkat.');
+      } catch {
+        if (!controller.signal.aborted && !cached) setMasterMessage('Daftar lokasi belum tersedia untuk offline. Koordinat manual tetap tersedia.');
+      }
+    })();
     return () => controller.abort();
-  }, [areaId, reloadKey]);
+  }, [areaId, reloadKey, db]);
   function edit() { gpsToken.current++; setGpsMessage(''); setError(''); onChange(null); }
   const settings = { datum, zone: Number(zone), hemisphere };
   function showUtm(next: ObjectPoint, nextSettings = settings) {

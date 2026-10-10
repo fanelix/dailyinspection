@@ -1,5 +1,23 @@
 # dailyinspection
 
+## T5 — draft, pemulihan dan pencatatan offline (2026-10-10)
+
+Pengguna sudah memperbarui Apps Script dan meminta melanjutkan. T5 dikerjakan di `codex/t5-drafts`, bertumpuk di atas T4 `ae34c68`. T6/T7 belum dikerjakan. Rencana: [`docs/superpowers/plans/2026-10-10-t5-drafts.md`](docs/superpowers/plans/2026-10-10-t5-drafts.md).
+
+- Form, JPEG terkompresi, keterangan dan relasi temuan disimpan otomatis di IndexedDB; status berhasil hanya sesudah transaksi selesai. Koordinat UTM mentah, datum/zona/belahan, titik/GPS dan lokasi terkonfirmasi pulih terpisah; input belum lengkap tidak menjadi lokasi terkonfirmasi.
+- **Simpan draft sekarang**, **Simpan untuk dikirim nanti**, daftar draft lokal dan **Kirim yang tertunda** tersedia. Antrean menyimpan UUID/hash/payload immutable sebelum request pertama. Pengiriman hanya foreground, satu pengirim lintas tab dengan Web Locks; browser tanpa Web Locks menahan pengiriman dan mempertahankan draft.
+- Respons hilang mempertahankan byte dan ID. Byte dibersihkan bersama acknowledgment finalisasi yang sudah diperiksa, dalam satu transaksi lokal. Metadata kiriman tetap tersedia untuk baca foto server. Konflik revisi dua tab tidak menimpa data; tawarkan muat versi tersimpan atau salinan baru. Salinan baru meremap UUID foto/tautan dan ditolak bila sumber sudah masuk antrean di tab lain.
+- **Siapkan pencatatan offline** memuat daftar lokasi tervalidasi ketujuh area, meminta storage persistent bila tersedia, dan memeriksa shell/aset/template versi yang sama. Daftar kosong yang benar dari server boleh disimpan sebagai master kosong. Indikator Siap hanya sesudah seluruh cache minimum diperiksa. Basemap OSM tetap memerlukan jaringan; koordinat manual/lokasi tersimpan tersedia.
+- Worker hanya cache shell dan aset statis. API, foto privat, respons inspeksi dan tile lintas origin dilewati. Build menghasilkan worker/manifest dengan hash aset; upgrade menunggu tab lama ditutup, tidak menghapus IndexedDB. Template yang tidak didukung menahan pemulihan tanpa menghapus data lama.
+- Draft hanya tersedia pada browser/origin yang sama; pindah preview/Production atau perangkat tidak memindahkan draft. Storage OS/browser dapat terhapus/penuh; UI menampilkan kegagalan dan menahan pengiriman bila snapshot belum durable. Tidak ada janji backup permanen atau upload saat Android menutup browser.
+
+**Apps Script:** T5 tidak mengubah file gateway, Script Properties, manifest atau izin Drive. Pembaruan dua file T4 tetap menjadi baseline.
+
+**Bukti lokal:** 65/65 checks lulus (47 sebelumnya + 13 draft/IDB + 5 worker), typecheck dan build produksi lulus. `fake-indexeddb@6.2.5` hanya devDependency untuk boundary test Node; tidak ada dependency produk baru. Review independen selesai; penolakan lokasi master pada antrean memulihkan record yang tepat, kesiapan shell membandingkan identitas bundle yang berjalan, dan pemulihan eksplisit selalu membuka ulang form. Native preview masih menunggu publikasi.
+
+**Verifikasi T4 Google asli, 2026-10-10:** Kirim ulang attempt dua JPEG sintetis pada preview T4 kini mencapai gateway, tetapi mendapat `RETRYABLE_ERROR` (galat Apps Script generik). Rentang staging `Inspections!A1:Y80` dan `Photos!A1:O80` sebelum/sesudah identik: 29/17 baris termasuk header, header belum bertambah Y/O. Tidak ada finalisasi atau byte T4 yang dapat dinyatakan berhasil. Proyek Apps Script yang terlihat pada akun cloud browser masih schema 1 dan dua file lama; tidak terbukti proyek itu deployment gateway aktif. URL gateway di Vercel bertipe Secret/write-only, tidak diubah atau dirotasi. Untuk diagnosis perlu pesan Execution log **dari deployment gateway aktif**; kode tidak ditebak atau diganti pada proyek yang tidak cocok. Dua foto/attempt T4 tetap di halaman.
+
+
 Aplikasi web inspeksi geoteknik harian (HP/tablet Android). Rencana dan keputusan: [`docs/plan.md`](docs/plan.md). Pedoman kerja agent: [`AGENTS.md`](AGENTS.md).
 
 ## Keputusan akses: tanpa aktivasi perangkat (2026-10-09)
