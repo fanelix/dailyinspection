@@ -5,8 +5,8 @@
 // Lock hanya membungkus operasi Sheets singkat, tidak pernah transfer byte.
 
 const SHEET_COLUMNS = {
-  Inspections: ['inspection_id', 'device_id', 'inspector_name', 'observed_at', 'received_at', 'note', 'status', 'version', 'schema_version', 'template_version', 'area_id', 'checklist_json', 'sub_area', 'location_json'],
-  Photos: ['photo_id', 'inspection_id', 'drive_file_id', 'status', 'size', 'mime', 'sha256', 'reserved_at', 'stored_at'],
+  Inspections: ['inspection_id', 'device_id', 'inspector_name', 'observed_at', 'received_at', 'note', 'status', 'version', 'schema_version', 'template_version', 'area_id', 'checklist_json', 'sub_area', 'location_json', 'photo_manifest_json'],
+  Photos: ['photo_id', 'inspection_id', 'drive_file_id', 'status', 'size', 'mime', 'sha256', 'reserved_at', 'stored_at', 'caption'],
 };
 // Known headers verified in the existing staging DB. Keep these columns and old rows in place.
 const STAGING_COLUMNS = {
@@ -20,6 +20,11 @@ const STAGING_FIELD_NAMES = {
 const MAX_PHOTO_BYTES = 2 * 1024 * 1024; // sama dengan lib/photos.ts; usulan rencana §8, belum diuji dengan foto nyata
 const MAX_PHOTOS_PER_INSPECTION = 5; // usulan rencana §8
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+function prepareCompleteInspection(payload) {
+  if (!isObject_(payload) || payload.submissionVersion !== 1) throw bad_('Versi pengiriman tidak didukung');
+  return prepareLocatedInspection(payload);
+}
 
 function prepareUtmInspection(payload) {
   if (!isObject_(payload) || !isObject_(payload.location) || !isObject_(payload.location.object) || payload.location.object.utm == null) throw bad_('Snapshot UTM wajib dikonfirmasi');
@@ -41,7 +46,7 @@ function prepareInspection(payload) {
     const inspRow = findRow_(insp, v.inspectionId);
     let rec = inspRow ? readRecord_(insp, 'Inspections', inspRow) : null;
     if (rec) {
-      if (rec.inspector_name !== v.inspectorName || rec.note !== v.note || rec.observed_at !== v.observedAt || rec.checklist_json !== v.checklistJson || rec.location_json !== v.locationJson) {
+      if (rec.inspector_name !== v.inspectorName || rec.note !== v.note || rec.observed_at !== v.observedAt || rec.checklist_json !== v.checklistJson || rec.location_json !== v.locationJson || rec.photo_manifest_json !== v.manifestJson) {
         throw new GatewayError('CONFLICT', 'ID inspeksi sudah dipakai dengan isi berbeda');
       }
     }
@@ -50,7 +55,7 @@ function prepareInspection(payload) {
     const selected = v.location && v.location.object.savedLocation;
     if (!rec && selected) {
       const current = listLocations({ areaId: v.checklist.areaId }).locations.find(function (l) { return l.id === selected.id; });
-      if (!current || JSON.stringify(current) !== JSON.stringify(selected)) throw new GatewayError('CONFLICT', 'Lokasi tersimpan berubah; muat ulang daftar dan pilih kembali');
+      if (!current || JSON.stringify(current) !== JSON.stringify(selected)) throw new GatewayError(v.manifest ? 'LOCATION_CHANGED' : 'CONFLICT', 'Lokasi tersimpan berubah; muat ulang daftar dan pilih kembali');
     }
 
     // Rencanakan foto lebih dulu (tanpa menulis apa pun) agar penolakan tidak meninggalkan setengah data.
@@ -66,6 +71,7 @@ function prepareInspection(payload) {
     if (countPhotosOf_(photos, v.inspectionId) + missing.length > MAX_PHOTOS_PER_INSPECTION) {
       throw bad_('Maksimal ' + MAX_PHOTOS_PER_INSPECTION + ' foto per inspeksi');
     }
+    if (rec && rec.status === 'submitted' && missing.length) throw new GatewayError('CONFLICT', 'Inspeksi terkirim tidak dapat ditambah foto');
 
     if (!rec) {
       rec = {
@@ -83,6 +89,7 @@ function prepareInspection(payload) {
         checklist_json: v.checklistJson,
         sub_area: v.checklist.subArea || '',
         location_json: v.locationJson,
+        photo_manifest_json: v.manifestJson,
         identity_verification: 'unverified', // manual names are not authenticated identities
         submission_verification: 'unverified',
         updated_at: now,
@@ -95,7 +102,7 @@ function prepareInspection(payload) {
       if (!ids || ids.length !== missing.length) throw new GatewayError('RETRYABLE_ERROR', 'Reservasi ID Drive gagal');
       // ID cadangan yang tidak terpakai (mis. Sheets gagal setelah ini) boleh yatim; tidak berbahaya.
       missing.forEach(function (photoId, i) {
-        const photo = { photo_id: photoId, inspection_id: v.inspectionId, revision: rec.version, drive_file_id: ids[i], status: 'reserved', reserved_at: now };
+        const photo = { photo_id: photoId, inspection_id: v.inspectionId, revision: rec.version, drive_file_id: ids[i], status: 'reserved', reserved_at: now, caption: v.manifest ? v.manifest.find(function (p) { return p.photoId === photoId; }).caption : '' };
         writeRow_(photos, photos.getLastRow() + 1, recordValues_(photos, 'Photos', photo));
         statuses[photoId] = 'reserved';
       });
@@ -110,6 +117,7 @@ function prepareInspection(payload) {
       subArea: rec.sub_area || null,
       checklistSha256: sha256Hex_(rec.checklist_json),
       locationSha256: rec.location_json ? sha256Hex_(rec.location_json) : null,
+      ...(rec.photo_manifest_json ? { photoManifestSha256: sha256Hex_(rec.photo_manifest_json) } : {}),
       reviewRequired: v.checklist.reviewRequired,
       photos: v.photoIds.map(function (photoId) {
         return { photoId: photoId, status: statuses[photoId] };
@@ -123,7 +131,9 @@ function uploadPhoto(payload) {
   const bytes = decodeJpeg_(v);
 
   const start = withLock_(function () {
-    return loadPhoto_(v.inspectionId, v.photoId).rec;
+    const photo = loadPhoto_(v.inspectionId, v.photoId).rec;
+    checkUploadManifest_(v, bytes.length, photo);
+    return photo;
   });
   if (start.status === 'stored') {
     if (start.sha256 !== v.sha256) throw new GatewayError('CONFLICT', 'photoId sudah berisi foto lain');
@@ -135,6 +145,7 @@ function uploadPhoto(payload) {
   const stored = withLock_(function () {
     const loaded = loadPhoto_(v.inspectionId, v.photoId);
     const rec = loaded.rec;
+    checkUploadManifest_(v, bytes.length, rec);
     if (rec.status === 'stored' && rec.sha256 !== v.sha256) throw new GatewayError('CONFLICT', 'photoId sudah berisi foto lain');
     rec.status = 'stored';
     rec.size = String(bytes.length);
@@ -145,6 +156,63 @@ function uploadPhoto(payload) {
     return rec;
   });
   return photoResult_(stored, outcome === 'existing');
+}
+
+// A stored photo is already checksum-verified by uploadPhoto. Finalization checks the immutable manifest
+// and all reservations under the same Sheets lock; interrupted or concurrent uploads cannot pass early.
+function finalizeInspection(payload) {
+  if (!isObject_(payload)) throw bad_('Payload harus objek');
+  const inspectionId = requireUuid_(payload.inspectionId, 'inspectionId');
+  if (!Number.isInteger(payload.expectedVersion) || payload.expectedVersion < 1) throw bad_('expectedVersion tidak valid');
+  ['checklistSha256', 'locationSha256', 'photoManifestSha256'].forEach(function (key) {
+    if (typeof payload[key] !== 'string' || !/^[0-9a-f]{64}$/.test(payload[key])) throw bad_(key + ' tidak valid');
+  });
+  return withLock_(function () {
+    const loaded = loadInspection_(inspectionId), rec = loaded.rec;
+    if (!rec.photo_manifest_json || !rec.location_json) throw new GatewayError('CONFLICT', 'Inspeksi belum disiapkan untuk finalisasi');
+    const checklist = JSON.parse(rec.checklist_json), manifest = JSON.parse(rec.photo_manifest_json);
+    const hashes = { checklistSha256: sha256Hex_(rec.checklist_json), locationSha256: sha256Hex_(rec.location_json), photoManifestSha256: sha256Hex_(rec.photo_manifest_json) };
+    if (Object.keys(hashes).some(function (k) { return hashes[k] !== payload[k]; })) throw new GatewayError('CONFLICT', 'Isi inspeksi berbeda dari kiriman yang dikonfirmasi');
+    const version = Number(rec.version);
+    const replayed = rec.status === 'submitted' && version === payload.expectedVersion + 1;
+    if (!replayed && (rec.status !== 'uploading' || version !== payload.expectedVersion)) throw new GatewayError('CONFLICT', 'Versi atau status inspeksi berubah');
+    const photos = sheet_('Photos');
+    if (countPhotosOf_(photos, inspectionId) !== manifest.length) throw new GatewayError('CONFLICT', 'Daftar reservasi foto berbeda');
+    const results = manifest.map(function (p) {
+      const photo = loadPhoto_(inspectionId, p.photoId).rec;
+      if (photo.status !== 'stored' || photo.sha256 !== p.sha256 || Number(photo.size) !== p.size || photo.mime !== 'image/jpeg' || photo.caption !== p.caption) {
+        throw new GatewayError('CONFLICT', 'Ada foto yang belum tersimpan sesuai kiriman. Tekan Kirim lagi dengan isian yang sama.');
+      }
+      return { photoId: p.photoId, status: photo.status, sha256: photo.sha256 };
+    });
+    if (!replayed) {
+      // Revalidate the saved snapshot and finding links before the state transition.
+      let validated;
+      try {
+        validated = parseChecklist({ ...checklist, photoIds: manifest.map(function (p) { return p.photoId; }) });
+        parseLocation(JSON.parse(rec.location_json), checklist.areaId);
+      } catch (err) { throw bad_(err.message); }
+      if (JSON.stringify(validated) !== rec.checklist_json) throw new GatewayError('CONFLICT', 'Snapshot checklist berubah');
+      rec.status = 'submitted'; rec.version = String(version + 1); rec.updated_at = new Date().toISOString();
+      writeRow_(loaded.sheet, loaded.row, recordValues_(loaded.sheet, 'Inspections', rec));
+    }
+    return { inspectionId: inspectionId, status: rec.status, version: Number(rec.version), ...hashes, reviewRequired: checklist.reviewRequired, photos: results };
+  });
+}
+
+function loadInspection_(inspectionId) {
+  const sh = sheet_('Inspections'), row = findRow_(sh, inspectionId);
+  if (!row) throw new GatewayError('NOT_FOUND', 'Inspeksi tidak ditemukan');
+  return { sheet: sh, row: row, rec: readRecord_(sh, 'Inspections', row) };
+}
+
+function checkUploadManifest_(v, size, photo) {
+  const rec = loadInspection_(v.inspectionId).rec;
+  if (rec.photo_manifest_json) {
+    const expected = JSON.parse(rec.photo_manifest_json).find(function (p) { return p.photoId === v.photoId; });
+    if (!expected || expected.sha256 !== v.sha256 || expected.size !== size) throw new GatewayError('CONFLICT', 'Foto berbeda dari reservasi pengiriman');
+  }
+  if (rec.status === 'submitted' && photo.status !== 'stored') throw new GatewayError('CONFLICT', 'Inspeksi terkirim tidak dapat diubah');
 }
 
 function getPhoto(payload) {
@@ -219,7 +287,7 @@ function sheetLayout_(sh, name) {
   const staging = base.every(function (value, i) { return actual[i] === value; });
   const fields = SHEET_COLUMNS[name].map(function (c) { return staging ? STAGING_FIELD_NAMES[name][c] || c : c; });
   const columns = staging ? base.concat(fields.filter(function (c) { return base.indexOf(c) < 0; })) : SHEET_COLUMNS[name];
-  const lengths = staging ? (name === 'Inspections' ? [17, 22, 23, 24] : [10, 14]) : name === 'Inspections' ? [8, 12, 13, 14] : [9];
+  const lengths = staging ? (name === 'Inspections' ? [17, 22, 23, 24, 25] : [10, 14, 15]) : name === 'Inspections' ? [8, 12, 13, 14, 15] : [9, 10];
   if (lengths.indexOf(actual.length) < 0 || !actual.every(function (value, i) { return value === columns[i]; })) {
     throw new GatewayError('INTERNAL_ERROR', 'Header ' + name + ' tidak sesuai; periksa struktur tab sebelum menulis');
   }
@@ -334,12 +402,21 @@ function parsePrepare_(p) {
     return requireUuid_(id, 'photoId');
   });
   if (new Set(photoIds).size !== photoIds.length) throw bad_('photoIds tidak boleh ganda');
+  let manifest = null;
+  if (p.submissionVersion !== undefined) {
+    if (p.submissionVersion !== 1 || !Array.isArray(p.photoManifest) || p.photoManifest.length !== photoIds.length) throw bad_('Manifest foto tidak valid');
+    manifest = p.photoManifest.map(function (photo, i) {
+      if (!isObject_(photo) || photo.photoId !== photoIds[i] || typeof photo.sha256 !== 'string' || !/^[0-9a-f]{64}$/.test(photo.sha256) || !Number.isInteger(photo.size) || photo.size < 3 || photo.size > MAX_PHOTO_BYTES || typeof photo.caption !== 'string' || photo.caption.trim().length > 500) throw bad_('Isi manifest foto tidak valid');
+      return { photoId: photo.photoId, sha256: photo.sha256, size: photo.size, caption: photo.caption.trim() };
+    });
+    if (p.location == null) throw bad_('Lokasi objek wajib dikonfirmasi');
+  }
   let checklist;
   try { checklist = parseChecklist(p); } catch (err) { throw bad_(err.message); }
   let location;
   try { location = parseLocation(p.location, checklist.areaId); } catch (err) { throw bad_(err.message); }
   return { inspectionId: inspectionId, inspectorName: inspectorName, note: note, observedAt: observedAt, photoIds: photoIds,
-    checklist: checklist, checklistJson: JSON.stringify(checklist), location: location, locationJson: location ? JSON.stringify(location) : '' };
+    checklist: checklist, checklistJson: JSON.stringify(checklist), location: location, locationJson: location ? JSON.stringify(location) : '', manifest: manifest, manifestJson: manifest ? JSON.stringify(manifest) : '' };
 }
 
 function parseUpload_(p) {

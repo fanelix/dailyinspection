@@ -2,11 +2,8 @@
 import { ANSWER_OPTIONS, CHECKLISTS } from '../lib/inspection.ts';
 import type { Answer, ChecklistAnswer, Finding } from '../lib/inspection.ts';
 
-// Temporary local marker; replaced by the stable photo UUID when preparing the request.
-export const SELECTED_PHOTO = 'selected-photo';
-
-export default function ChecklistFields({ areaId, answers, hasPhoto, onChange }: {
-  areaId: string; answers: ChecklistAnswer[]; hasPhoto: boolean; onChange: (answers: ChecklistAnswer[]) => void;
+export default function ChecklistFields({ areaId, answers, photos, onChange }: {
+  areaId: string; answers: ChecklistAnswer[]; photos: { id: string; label: string }[]; onChange: (answers: ChecklistAnswer[]) => void;
 }) {
   const area = CHECKLISTS.areas.find(a => a.id === areaId);
   if (!area) return null;
@@ -38,10 +35,12 @@ export default function ChecklistFields({ areaId, answers, hasPhoto, onChange }:
           <input id={`${id}-type`} value={f.type} maxLength={100} required onChange={e => finding(index, { type: e.target.value })} />
           <label htmlFor={`${id}-description`}>Deskripsi temuan</label>
           <textarea id={`${id}-description`} value={f.description} maxLength={2000} required onChange={e => finding(index, { description: e.target.value })} />
-          {hasPhoto && <label className="choice">
-            <input type="checkbox" checked={f.photoIds.length > 0} onChange={e => finding(index, { photoIds: e.target.checked ? [SELECTED_PHOTO] : [], noPhotoReason: null })} />
-            Foto inspeksi menunjukkan temuan ini
-          </label>}
+          {photos.map(photo => <label className="choice" key={photo.id}>
+            <input type="checkbox" checked={f.photoIds.includes(photo.id)} onChange={e => finding(index, {
+              photoIds: e.target.checked ? [...f.photoIds, photo.id] : f.photoIds.filter(id => id !== photo.id), noPhotoReason: null,
+            })} />
+            {photo.label} menunjukkan temuan ini
+          </label>)}
           {f.photoIds.length === 0 && <>
             <label htmlFor={`${id}-reason`}>Alasan tanpa foto temuan</label>
             <textarea id={`${id}-reason`} value={f.noPhotoReason ?? ''} maxLength={500} required onChange={e => finding(index, { noPhotoReason: e.target.value })} />

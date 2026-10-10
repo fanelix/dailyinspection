@@ -22,9 +22,38 @@ Perlindungan yang masih ada: HMAC gateway, validasi payload, batas 2 MB dan 5 fo
 
 **Belum ada dan perlu keputusan pengguna:** batas laju atau kuota harian. Angkanya bergantung pada kapasitas yang belum ditetapkan (rencana §16), jadi tidak saya karang. Pengaman tanpa friksi yang bisa dipertimbangkan: aturan pembatasan laju di Vercel (Firewall; ingatan saya, belum diverifikasi), dan tidak menyebarkan URL. Alternatif ringan yang pernah ditawarkan dan ditolak: tautan aktivasi sekali ketuk, dan kode tim.
 
+## T4 — foto dan finalisasi (2026-10-10)
+
+Pengguna menyelesaikan pembaruan enam file T3 lalu meminta tahap berikutnya. Branch `codex/t4-finalization` bertumpuk di atas T3 `efe3c18`; hanya T4 dikerjakan. T5–T7 menunggu permintaan terpisah.
+
+- Hingga **5 foto** (batas usulan §8) dapat dipilih sekaligus atau ditambah bertahap. Kompresi JPEG yang sudah ada dipakai ulang, satu decode setiap waktu, maksimal 2 MB per foto. Keterangan opsional maksimal 500 karakter. Hapus sebelum kirim menghapus tautan foto itu saja dari temuan; temuan tanpa foto tetap wajib beralasan dan ditandai Perlu review.
+- Tiap temuan memilih foto secara eksplisit, termasuk beberapa foto. Foto umum tidak otomatis menjadi bukti seluruh temuan. Server menyimpan manifest immutable berisi photo ID, SHA-256, ukuran, dan keterangan. Manifest ikut acknowledgment dan konflik retry.
+- Pengiriman: prepare → upload setiap foto → finalize. UI memeriksa ID/status/ukuran/checksum serta checksum checklist, lokasi, dan manifest. Isian dikunci sebelum request pertama, termasuk saat hasil belum diketahui. Kirim ulang memakai attempt dan ID yang sama; Mulai inspeksi baru mengosongkan form dengan konfirmasi bila kiriman belum selesai. Isian/blob masih di memori halaman; pemulihan setelah reload tetap T5.
+- `finalizeInspection` hanya menerima record T4 dengan lokasi terkonfirmasi, versi yang diharapkan, hash yang sama, dan tepat seluruh reservasi manifest dalam status `stored`. Checklist dan relasi temuan diperiksa ulang sebelum transisi `uploading` revisi 1 → `submitted` revisi 2. Respons finalisasi hilang dapat diulang tanpa revisi/file/baris kedua. Finalisasi bukan persetujuan engineer; `submission_verification` tetap `unverified`.
+- Tidak ada dependency baru, perubahan schema/template checklist, izin Drive, login, atau rollout Production.
+
+### Pembaruan Apps Script T4
+
+Dari gateway T3 build `2026-10-09.6` yang sudah diperbarui, **hanya dua file berubah**:
+
+| File repo | File editor | Tujuan |
+| --- | --- | --- |
+| `apps-script/src/gateway.js` | `gateway` | Build `2026-10-10.1`, allowlist prepare T4 dan finalisasi |
+| `apps-script/src/storage.js` | `storage` | Manifest/keterangan immutable, verifikasi upload dan finalisasi |
+
+Empat file T3 lain (`checklist`, `location`, `locations`, `projection`) tetap harus ada dengan versi T3 terakhir. Script Properties, manifest, Spreadsheet ID dan deployment URL tetap. Salin dua file di atas dari branch T4, lalu **Deploy → Manage deployments → Edit → New version → Deploy** pada deployment yang sama. Health build yang diharapkan **`2026-10-10.1`**. Update editor saja tidak mengubah web app.
+
+Gateway menambahkan header di kanan secara otomatis: `Inspections!Y` **`photo_manifest_json`** (24 → 25 kolom) dan `Photos!O` **`caption`** (14 → 15). Header/baris lama tidak diganti. Skema sederhana ikut didukung (15/10 kolom). Frontend memakai action baru `prepareCompleteInspection`, sehingga gateway T3 lama menolak sebelum menulis data T4; jalur retry T1/T2/T3 tetap tersedia.
+
+Setelah deployment gateway, uji preview T4: dua foto, masing-masing keterangan, hubungan ke temuan, lokasi sintetis terkonfirmasi → Kirim; periksa satu inspeksi `submitted` revisi 2 dan dua foto `stored`, manifest/keterangan cocok, serta baca kedua foto melalui tombol Baca foto. Ulangi kiriman tidak membuat duplikat. Pengujian Android/kamera nyata dan putus jaringan lapangan masih diperlukan. Jangan pakai koordinat sintetis untuk observasi operasional.
+
+**Bukti lokal:** 47/47 check lulus, termasuk kegagalan foto kedua setelah Drive tersimpan tetapi Sheets gagal, recovery reservasi terputus, retry UUID tetap tanpa file ganda, ukuran/hash/versi yang salah ditolak, finalisasi tanpa foto dengan alasan valid ditandai review, gateway T3 lama menolak sebelum write, pemetaan kolom asli/baris lama tetap, dan route Next finalisasi dengan respons hilang. Review independen selesai setelah perbaikan penolakan master lokasi berubah: form dibuka kembali tanpa kehilangan foto/checklist bila server memastikan belum ada write; galat parsial/unknown tetap memakai retry immutable. Build produksi dan diff check lulus. Runtime tiruan tidak membuktikan T4 terhadap Google asli; rollout T4 masih menunggu dua file di atas.
+
+**Bukti T3 Google asli, 2026-10-10:** preview T3 berhasil mengirim satu inspeksi sintetis tanpa foto dengan UTM ID74 zona 50S (EPSG:23890), E=500000, N=9778935 dan operasi EPSG:1833. Snapshot UTM asli/WGS84 tersimpan pada `location_json` X, acknowledgment/checksum berhasil. Inspections berubah 28 → 29 baris termasuk header; kirim ulang identik tidak menambah/mengubah baris, Photos tetap 17 baris. Semua baris lama tetap utuh. GPS observer null sesuai input manual; master masih kosong dan tidak diisi contoh. GPS/perizinan Android dan byte unduhan GeoJSON aktual belum diverifikasi.
+
 ## T3: lokasi objek dan GPS petugas (2026-10-09)
 
-Pengguna meminta melanjutkan tahap berikutnya dan mengabaikan pekerjaan izin foto. T3 dikerjakan pada `codex/t3-locations`, turunan dari T2 `9979a49`. T4–T7 belum dikerjakan. Rencana implementasi: [`docs/superpowers/plans/2026-10-09-t3-locations.md`](docs/superpowers/plans/2026-10-09-t3-locations.md).
+Pengguna meminta melanjutkan tahap berikutnya dan mengabaikan pekerjaan izin foto. T3 dikerjakan pada `codex/t3-locations`, turunan dari T2 `9979a49`. T4 dikerjakan setelah pembaruan gateway (lihat status terbaru di atas); T5–T7 belum dikerjakan. Rencana implementasi: [`docs/superpowers/plans/2026-10-09-t3-locations.md`](docs/superpowers/plans/2026-10-09-t3-locations.md).
 
 - Form memerlukan **konfirmasi lokasi objek**: GPS petugas yang dipilih secara eksplisit sebagai objek, pin peta yang dapat digeser, lokasi tersimpan, atau latitude/longitude manual. GPS diambil hanya saat tombol ditekan; izin ditolak/tidak tersedia/timeout tetap memungkinkan pilihan lain. Perubahan lokasi/area membatalkan konfirmasi. Respons GPS lama dibatalkan ketika pengguna mengedit pilihan atau mengganti area.
 - GPS petugas menyimpan latitude, longitude, akurasi meter dan waktu perangkat. Objek disimpan terpisah dengan metode dan waktu pemilihan. Pin/koordinat/lokasi tersimpan **tidak mewarisi akurasi GPS petugas**. Metadata sumber lokasi tersimpan ada di snapshotnya. Tidak ada batas akurasi wajib, grid tambang, nilai RL, koordinat site, atau batas area yang dikarang. Pilihan UTM dijelaskan di bawah.

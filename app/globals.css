@@ -84,3 +84,10 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
 .coordinate-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .coordinate-fields label { font-size: 0.875rem; }
 @media (max-width: 420px) { .coordinate-fields { grid-template-columns: 1fr; } }
+
+.photo-card { margin: 16px 0; padding: 12px; border: 1px solid #cad6d0; border-radius: 10px; }
+.photo-card h3 { font-size: 1rem; margin: 0; }
+.photo-thumb { width: 180px; height: 140px; object-fit: contain; background: #eef5f0; }
+.photo-card button { margin-top: 12px; }
+.photo-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.photo-actions button { width: auto; margin-top: 0; }

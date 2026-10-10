@@ -1,14 +1,14 @@
 'use client';
 
-// T2: checklist berversi; memakai jalur foto T1 (maksimal satu foto pada form ini).
-// Tanpa aktivasi perangkat (keputusan pengguna 2026-10-09). Kompresi foto ditarik maju dari T4.
-// T3: lokasi objek dikonfirmasi terpisah dari GPS petugas. Draft offline/finalisasi tetap T5/T4.
+// T4: many photos, immutable retries, and server-verified finalization. Offline drafts remain T5.
 import { useEffect, useRef, useState } from 'react';
 import type { ChangeEvent, FormEvent } from 'react';
 import { compressPhoto, sha256Hex } from '../lib/photos.ts';
 import { CHECKLISTS, emptyAnswers, parseChecklist } from '../lib/inspection.ts';
 import type { ChecklistAnswer } from '../lib/inspection.ts';
-import ChecklistFields, { SELECTED_PHOTO } from '../components/ChecklistFields.tsx';
+import ChecklistFields from '../components/ChecklistFields.tsx';
+import { submitInspection } from '../lib/submission.ts';
+import type { SubmissionAttempt } from '../lib/submission.ts';
 import LocationPicker from '../components/LocationPicker.tsx';
 import { parseLocation } from '../lib/location.ts';
 import type { InspectionLocation } from '../lib/location.ts';
@@ -54,12 +54,13 @@ async function api(path: string, init: RequestInit) {
 type Status = { kind: 'idle' | 'busy' | 'ok' | 'error'; text: string };
 
 // Salinan kerja foto yang sudah dikompres; checksum dan ID dihitung dari byte ini, bukan dari file asli.
-type Prepared = { bytes: ArrayBuffer; sha256: string; previewUrl: string };
+type Prepared = { id: string; bytes: ArrayBuffer; sha256: string; previewUrl: string; caption: string };
+const MAX_PHOTOS = 5; // usulan §8, sama dengan gateway
 
 const size = (n: number) =>
   n < 1024 * 1024 ? `${Math.max(1, Math.round(n / 1024))} KB` : `${(n / 1024 / 1024).toLocaleString('id-ID', { maximumFractionDigits: 1 })} MB`;
 
-function InspectionForm() {
+function InspectionForm({ onNew }: { onNew: () => void }) {
   const [name, setName] = useState('');
   const [note, setNote] = useState('');
   const [areaId, setAreaId] = useState('');
@@ -67,106 +68,93 @@ function InspectionForm() {
   const [answers, setAnswers] = useState<ChecklistAnswer[]>([]);
   const [location, setLocation] = useState<InspectionLocation | null>(null);
   const [locationDirty, setLocationDirty] = useState(false);
-  const [photo, setPhoto] = useState<Prepared | null>(null);
+  const [photos, setPhotos] = useState<Prepared[]>([]);
   const [photoMsg, setPhotoMsg] = useState<Status>({ kind: 'idle', text: '' });
   const [status, setStatus] = useState<Status>({ kind: 'idle', text: '' });
-  const [photoUrl, setPhotoUrl] = useState('');
+  const [locked, setLocked] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
+  const [serverPhoto, setServerPhoto] = useState<number | null>(null);
   const [readBack, setReadBack] = useState('');
-  // ID dipertahankan selama isi formulir sama, sehingga menekan Kirim lagi = mengulang, bukan inspeksi baru.
-  const attempt = useRef<{ key: string; inspectionId: string; photoId: string; observedAt: string } | null>(null);
-  const pickToken = useRef(0);
+  const attempt = useRef<(SubmissionAttempt & { key: string }) | null>(null);
+  const previews = useRef<Prepared[]>([]);
+  useEffect(() => { previews.current = photos; }, [photos]);
+  useEffect(() => () => { previews.current.forEach(p => URL.revokeObjectURL(p.previewUrl)); }, []);
 
-  useEffect(() => () => {
-    if (photo) URL.revokeObjectURL(photo.previewUrl);
-  }, [photo]);
-
-  // Kompres saat dipilih (bukan saat Kirim): galat dan ukuran hasil langsung terlihat, dan hanya foto yang direset
-  // bila gagal; nama dan catatan tetap utuh. Foto asli di galeri tidak disentuh.
+  // Decode sequentially. A bad batch leaves previously selected photos and finding links intact.
   async function pick(e: ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    const token = ++pickToken.current;
-    setPhoto(null);
-    setAnswers(current => current.map(a => a.finding ? { ...a, finding: { ...a.finding, photoIds: [] } } : a));
-    setPhotoUrl('');
-    setReadBack('');
-    if (!file) return setPhotoMsg({ kind: 'idle', text: '' });
+    const files = Array.from(e.target.files ?? []);
+    e.target.value = '';
+    if (!files.length) return;
+    if (photos.length + files.length > MAX_PHOTOS) return setPhotoMsg({ kind: 'error', text: `Maksimal ${MAX_PHOTOS} foto. Pilihan sebelumnya tetap tersedia.` });
+    const added: Prepared[] = [];
     setPhotoMsg({ kind: 'busy', text: 'Menyiapkan foto…' });
     try {
-      const out = await compressPhoto(file);
-      const bytes = await out.blob.arrayBuffer();
-      const sha256 = await sha256Hex(bytes);
-      if (token !== pickToken.current) return; // pilihan yang lebih baru sudah menggantikan
-      setPhoto({ bytes, sha256, previewUrl: URL.createObjectURL(out.blob) });
-      setPhotoMsg({ kind: 'ok', text: `✔ Foto siap: ${out.width} × ${out.height} px, ${size(bytes.byteLength)} (asli ${size(file.size)}).` });
+      for (const file of files) {
+        const out = await compressPhoto(file), bytes = await out.blob.arrayBuffer();
+        const sha256 = await sha256Hex(bytes);
+        added.push({ id: crypto.randomUUID(), bytes, sha256, previewUrl: URL.createObjectURL(out.blob), caption: '' });
+      }
+      setPhotos([...photos, ...added]);
+      setPhotoMsg({ kind: 'ok', text: `✔ ${photos.length + added.length} foto siap. Foto asli di galeri tetap tersedia.` });
     } catch (err) {
-      if (token === pickToken.current) setPhotoMsg({ kind: 'error', text: `✖ ${errorText(err)}` });
+      added.forEach(p => URL.revokeObjectURL(p.previewUrl));
+      setPhotoMsg({ kind: 'error', text: `✖ ${errorText(err)} Pilihan sebelumnya tetap tersedia.` });
     }
+  }
+
+  function removePhoto(photo: Prepared) {
+    URL.revokeObjectURL(photo.previewUrl);
+    setPhotos(photos.filter(p => p.id !== photo.id));
+    setAnswers(answers.map(a => a.finding ? { ...a, finding: { ...a.finding, photoIds: a.finding.photoIds.filter(id => id !== photo.id) } } : a));
+    setPhotoMsg({ kind: 'idle', text: '' }); setStatus({ kind: 'idle', text: '' });
   }
 
   async function submit(e: FormEvent) {
     e.preventDefault();
-    setPhotoUrl('');
-    setReadBack('');
+    if (submitted) return;
     if (!name.trim()) return setStatus({ kind: 'error', text: '✖ Isi nama petugas.' });
     setStatus({ kind: 'busy', text: 'Menyiapkan…' });
     try {
       if (!location) throw new Error('Pilih dan konfirmasi lokasi objek sebelum mengirim.');
       const confirmedLocation = parseLocation(location, areaId);
-      const key = JSON.stringify([name.trim(), note, areaId, subArea.trim(), answers, photo?.sha256 ?? null, confirmedLocation]);
+      const key = JSON.stringify([name.trim(), note, areaId, subArea.trim(), answers, photos.map(p => [p.id, p.sha256, p.caption.trim()]), confirmedLocation]);
       if (attempt.current?.key !== key) {
-        attempt.current = { key, inspectionId: crypto.randomUUID(), photoId: crypto.randomUUID(), observedAt: new Date().toISOString() };
+        const photoIds = photos.map(() => crypto.randomUUID());
+        const checklist = parseChecklist({ schemaVersion: CHECKLISTS.schemaVersion, templateVersion: CHECKLISTS.templateVersion, areaId, subArea, photoIds,
+          answers: answers.map(a => a.finding ? { ...a, finding: { ...a.finding,
+            photoIds: a.finding.photoIds.map(id => photoIds[photos.findIndex(p => p.id === id)]) } } : a) });
+        const preparedPhotos = photos.map((p, i) => ({ photoId: photoIds[i], sha256: p.sha256, size: p.bytes.byteLength, caption: p.caption.trim(), bytes: p.bytes }));
+        const photoManifest = preparedPhotos.map(({ bytes: _bytes, ...metadata }) => metadata);
+        const hashJson = (v: unknown) => sha256Hex(new TextEncoder().encode(JSON.stringify(v)).buffer);
+        attempt.current = { key, photos: preparedPhotos,
+          payload: { submissionVersion: 1, inspectionId: crypto.randomUUID(), inspectorName: name.trim(), note, observedAt: new Date().toISOString(), photoIds, photoManifest, ...checklist, location: confirmedLocation },
+          checklistSha256: await hashJson(checklist), locationSha256: await hashJson(confirmedLocation), photoManifestSha256: await hashJson(photoManifest),
+        };
       }
-      const { inspectionId, photoId, observedAt } = attempt.current;
-      const checklist = parseChecklist({ schemaVersion: CHECKLISTS.schemaVersion, templateVersion: CHECKLISTS.templateVersion, areaId, subArea,
-        photoIds: photo ? [photoId] : [], answers: answers.map(a => a.finding ? { ...a, finding: { ...a.finding,
-          photoIds: a.finding.photoIds.map(id => id === SELECTED_PHOTO ? photoId : id) } } : a) });
-      const checklistSha256 = await sha256Hex(new TextEncoder().encode(JSON.stringify(checklist)).buffer);
-      const locationSha256 = await sha256Hex(new TextEncoder().encode(JSON.stringify(confirmedLocation)).buffer);
-
-      setStatus({ kind: 'busy', text: 'Menyimpan data inspeksi…' });
-      const prepared = await api('/api/inspections', {
-        method: 'POST',
-        headers: JSON_HEADERS,
-        body: JSON.stringify({ inspectionId, inspectorName: name, note, observedAt, photoIds: photo ? [photoId] : [], ...checklist, location: confirmedLocation }),
-      });
-      if (prepared?.schemaVersion !== CHECKLISTS.schemaVersion || prepared.templateVersion !== CHECKLISTS.templateVersion || prepared.checklistSha256 !== checklistSha256) {
-        throw new Error('Server belum mengonfirmasi checklist yang sama. Data belum terverifikasi tersimpan; hubungi pengelola aplikasi.');
-      }
-      if (prepared.locationSha256 !== locationSha256) throw new Error('Server belum mengonfirmasi lokasi yang sama. Penyimpanan lokasi belum terverifikasi; hubungi pengelola aplikasi.');
-      if (!photo) {
-        setStatus({ kind: 'ok', text: `✔ Data dan checklist tersimpan di server tanpa foto.${checklist.reviewRequired ? ' Perlu review: ada temuan tanpa foto.' : ''} Inspeksi belum difinalisasi.` });
-        return;
-      }
-
-      setStatus({ kind: 'busy', text: 'Mengunggah foto…' });
-      const { bytes, sha256 } = photo;
-      const url = `/api/inspections/${inspectionId}/photos/${photoId}`;
-      const stored = await api(url, { method: 'PUT', headers: { 'content-type': 'image/jpeg', 'x-photo-sha256': sha256 }, body: bytes });
-      // "Tersimpan" hanya bila server menyatakan stored DAN checksum yang dikembalikan sama dengan milik kita.
-      if (stored?.status !== 'stored' || stored.sha256 !== sha256) throw new Error('Server tidak mengonfirmasi foto dengan checksum yang sama.');
-      setPhotoUrl(url);
-      setStatus({
-        kind: 'ok',
-        text: (stored.replayed
-          ? '✔ Data dan foto sudah tersimpan di server (percobaan sebelumnya berhasil; tidak ada duplikat). Inspeksi belum difinalisasi.'
-          : '✔ Data, checklist, dan foto tersimpan di server. Inspeksi belum difinalisasi.') + (checklist.reviewRequired ? ' Perlu review: ada temuan tanpa foto.' : ''),
-      });
+      // Freeze before the first request: even an unknown prepare result must retry the same IDs/content.
+      setLocked(true);
+      const done = await submitInspection(attempt.current, api, text => setStatus({ kind: 'busy', text }));
+      setSubmitted(true);
+      setStatus({ kind: 'ok', text: `✔ Inspeksi terkirim dan difinalisasi di server. ${photos.length} foto tersimpan.${done.reviewRequired ? ' Perlu review: ada temuan tanpa foto.' : ''}` });
+      if (photos.length) setServerPhoto(0);
     } catch (err) {
+      // This code proves no inspection was written. An outdated gateway may follow an earlier
+      // successful/unknown request or rollback, so it must keep the same attempt on retry.
+      if (err instanceof ApiError && err.code === 'LOCATION_CHANGED') {
+        setLocked(false); attempt.current = null;
+      }
       const unknown = err instanceof ApiError && (err.status === 0 || err.status === 504);
-      setStatus({
-        kind: 'error',
-        text: unknown
-          ? '✖ Hasil penyimpanan belum diketahui. Tekan Kirim lagi dengan isian yang sama untuk melanjutkan tanpa duplikasi.'
-          : `✖ ${errorText(err)}`,
-      });
+      setStatus({ kind: 'error', text: unknown
+        ? '✖ Hasil pengiriman belum diketahui. Tekan Kirim lagi dengan isian yang sama untuk melanjutkan tanpa duplikasi.'
+        : `✖ ${errorText(err)}${attempt.current ? ' Isian dan foto tetap tersedia di halaman ini untuk dicoba lagi.' : ''}` });
     }
   }
 
   const busy = status.kind === 'busy' || photoMsg.kind === 'busy';
   return (
-    <form onSubmit={submit} onChange={() => { setStatus({ kind: 'idle', text: '' }); setPhotoUrl(''); setReadBack(''); }}>
+    <form onSubmit={submit} onChange={() => { if (!locked) setStatus({ kind: 'idle', text: '' }); }}>
       <p className="notice">Checklist usulan untuk review engineer site. Isian belum tersimpan bila halaman ditutup sebelum berhasil dikirim.</p>
-      <fieldset className="form-fields" disabled={busy}>
+      <fieldset className="form-fields" disabled={busy || locked}>
       <label htmlFor="name">Nama petugas</label>
       <input id="name" value={name} onChange={(e) => setName(e.target.value)} maxLength={100} required />
       <p className="hint">Ketik nama petugas yang melakukan inspeksi.</p>
@@ -181,52 +169,60 @@ function InspectionForm() {
       <label htmlFor="sub-area">Sub-area / detail lokasi (opsional)</label>
       <input id="sub-area" value={subArea} onChange={e => setSubArea(e.target.value)} maxLength={200} disabled={!areaId} aria-describedby="sub-area-hint" />
       <p id="sub-area-hint" className="hint">Isi nama blok, bench, sektor, atau bagian lokasi di dalam area yang dipilih.</p>
-      {areaId && <LocationPicker key={areaId} areaId={areaId} value={location} disabled={busy} onChange={next => {
-        setLocation(next); setLocationDirty(true); setStatus({ kind: 'idle', text: '' }); setPhotoUrl(''); setReadBack('');
+      {areaId && <LocationPicker key={areaId} areaId={areaId} value={location} disabled={busy || locked} onChange={next => {
+        setLocation(next); setLocationDirty(true); setStatus({ kind: 'idle', text: '' });
       }} />}
       <label htmlFor="note">Catatan kondisi</label>
       <textarea id="note" value={note} onChange={(e) => setNote(e.target.value)} maxLength={2000} />
-      <label htmlFor="photo">Foto inspeksi (opsional; dikecilkan otomatis)</label>
-      <input id="photo" type="file" accept="image/*" onChange={pick} />
-      <p className="hint">Pilih dari kamera atau galeri, lalu tandai temuan yang ditunjukkan foto ini. Temuan lain memerlukan alasan tanpa foto.</p>
-      {photoMsg.text && (
-        <p className={`status ${photoMsg.kind}`} role="status">
-          {photoMsg.text}
-        </p>
-      )}
-      {photo && !photoUrl && <img src={photo.previewUrl} alt="Pratinjau foto yang akan dikirim" />}
-      <ChecklistFields areaId={areaId} answers={answers} hasPhoto={photo !== null} onChange={setAnswers} />
+      <label htmlFor="photo">Tambah foto inspeksi (maksimal 5; opsional)</label>
+      <input id="photo" type="file" accept="image/*" multiple onChange={pick} disabled={photos.length >= MAX_PHOTOS} />
+      <p className="hint">Pilih dari kamera atau galeri. Foto dikecilkan otomatis; tandai foto yang sesuai untuk setiap temuan.</p>
+      {photoMsg.text && <p className={`status ${photoMsg.kind}`} role="status">{photoMsg.text}</p>}
+      <div className="photo-list">
+        {photos.map((photo, i) => <section className="photo-card" key={photo.id} aria-label={`Foto ${i + 1}`}>
+          <h3>Foto {i + 1} <span className="hint">{size(photo.bytes.byteLength)}</span></h3>
+          <img src={photo.previewUrl} alt={`Pratinjau foto ${i + 1}`} className="photo-thumb" />
+          <label htmlFor={`caption-${photo.id}`}>Keterangan foto {i + 1} (opsional)</label>
+          <input id={`caption-${photo.id}`} value={photo.caption} maxLength={500} onChange={e => setPhotos(photos.map(p => p.id === photo.id ? { ...p, caption: e.target.value } : p))} />
+          <button type="button" onClick={() => removePhoto(photo)}>Hapus foto {i + 1}</button>
+        </section>)}
+      </div>
+      <ChecklistFields areaId={areaId} answers={answers} photos={photos.map((p, i) => ({ id: p.id, label: `Foto ${i + 1}${p.caption.trim() ? ` — ${p.caption.trim()}` : ''}` }))} onChange={setAnswers} />
       {areaId && <p className="hint">{CHECKLISTS.notice} Pelaporan mendesak tetap melalui saluran komunikasi site.</p>}
-      <button type="submit" disabled={busy}>
-        Kirim
-      </button>
       </fieldset>
+      {locked && <p className="hint">Isian dikunci untuk menjaga kiriman ulang tetap sama. Jangan tutup halaman saat pengiriman belum dikonfirmasi.</p>}
+      <button type="submit" disabled={busy || submitted}>Kirim</button>
       {status.text && (
         <p className={`status ${status.kind}`} role="status">
           {status.text}
         </p>
       )}
-      {photoUrl && (
-        <>
-          <img
-            src={photoUrl}
-            alt="Foto yang dibaca kembali dari server"
-            onLoad={() => setReadBack('✔ Foto berhasil dibaca kembali dari server.')}
-            onError={() => setReadBack('✖ Foto tersimpan tetapi gagal dibaca kembali.')}
-          />
-          {readBack && <p role="status">{readBack}</p>}
-        </>
-      )}
+      {submitted && photos.length > 0 && <section aria-label="Foto dari server">
+        <h2>Foto tersimpan</h2>
+        <div className="photo-actions">{photos.map((p, i) => <button type="button" key={p.id} onClick={() => { setServerPhoto(i); setReadBack(''); }}>Baca foto {i + 1}</button>)}</div>
+        {serverPhoto !== null && attempt.current && <img
+          key={serverPhoto} src={`/api/inspections/${attempt.current.payload.inspectionId}/photos/${attempt.current.photos[serverPhoto].photoId}`}
+          alt={`Foto ${serverPhoto + 1} yang dibaca kembali dari server`}
+          onLoad={() => setReadBack('✔ Foto berhasil dibaca kembali dari server.')}
+          onError={() => setReadBack('✖ Foto tersimpan tetapi gagal dibaca kembali.')}
+        />}
+        {readBack && <p role="status">{readBack}</p>}
+      </section>}
+      {locked && <button type="button" disabled={busy} onClick={() => {
+        if (!submitted && !window.confirm('Mulai inspeksi baru? Kiriman sebelumnya belum dikonfirmasi selesai dan isian di halaman ini akan dikosongkan.')) return;
+        onNew();
+      }}>Mulai inspeksi baru</button>}
       <p className="hint">Template usulan {CHECKLISTS.templateVersion}</p>
     </form>
   );
 }
 
 export default function Home() {
+  const [formKey, setFormKey] = useState(0);
   return (
     <main>
       <h1>Inspeksi Geoteknik Harian</h1>
-      <InspectionForm />
+      <InspectionForm key={formKey} onNew={() => setFormKey(k => k + 1)} />
     </main>
   );
 }
